@@ -3,6 +3,11 @@ import os
 from data_stores.mongodb import thoughts_db
 from langchain import LLMChain, PromptTemplate
 from langchain.chat_models import ChatOpenAI, ChatAnthropic
+from langchain.prompts.chat import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+)
 from langchain.document_loaders import YoutubeLoader
 from pprint import pprint
 
@@ -42,41 +47,100 @@ def generate_topics(content, title, llm):
     if llm is None:
         llm = chatgpt
 
-    prompt = PromptTemplate(
-        input_variables=["question", "docs", "topics", "title"],
+    system_message_prompt = SystemMessagePromptTemplate.from_template(
         template="""
-      You are a WikiPedia assistant that that can identify main topics about the given video transcript or article.
-      You will pick topics that may be included for the article based on the topics list provided.
-      The format should be:
-      - TOPIC_1
-      - TOPIC_2
-      - TOPIC_3
-
-      Answer the following question: {question}
-
-      article title: {title}
-      By analyzing the following summary: {docs}
-
-      Make sure to always pick topics only from these following ones: {topics}
-      Never invent topics and if you can't find 3 topics englobing the article, you can use less.
-
-
-      """,
+            You are a frequent contributor to Wikipedia and have a deep understanding of its taxonomy.
+        """
     )
 
+    human_message_prompt = HumanMessagePromptTemplate.from_template(
+        template="""
+            Pick three topics that properly match the article summary below, based on the topics list provided.
+            Your response format should be:
+            - TOPIC_1
+            - TOPIC_2
+            - TOPIC_3
+
+            Do not add a topic that isn't in this topics list: {topics}
+            Feel free to use less than three topics if you can't find three topics from the list that are a good fit.
+
+            Here is the article title: {title}
+            And finally, here is the article summary: {content}
+        """
+    )
+
+    chat_prompt = ChatPromptTemplate.from_messages(
+        [system_message_prompt, human_message_prompt]
+    )
+
+    # prompt = PromptTemplate(
+    #     input_variables=["topics", "title", "content"],
+    #     template="""
+    #         Pick three topics that properly match the article summary below, based on the topics list provided.
+    #         Your response format should be:
+    #         - TOPIC_1
+    #         - TOPIC_2
+    #         - TOPIC_3
+
+    #         Do not add a topic that isn't in this topics list: {topics}
+    #         Feel free to use less than three topics if you can't find three topics from the list that are a good fit.
+
+    #         Here is the article title: {title}
+    #         And finally, here is the article summary: {content}
+    #         """,
+    # )
+
+    # prompt = PromptTemplate(
+    #     input_variables=["question", "docs", "topics", "title"],
+    #     template="""
+    #   You are a WikiPedia assistant that that can identify main topics about the given video transcript or article.
+    #   You will pick topics that may be included for the article based on the topics list provided.
+    #   The format should be:
+    #   - TOPIC_1
+    #   - TOPIC_2
+    #   - TOPIC_3
+
+    #   Answer the following question: {question}
+
+    #   article title: {title}
+    #   By analyzing the following summary: {docs}
+
+    #   Make sure to always pick topics only from these following ones: {topics}
+    #   Never invent topics and if you can't find 3 topics englobing the article, you can use less.
+
+    #   """,
+    # )
+
+    # try:
+    #     chain = LLMChain(llm=llm, prompt=prompt)
+    #     response = chain.run(
+    #         question="identify 3 topics from the list provided only.",
+    #         docs=content,
+    #         topics=", ".join(topics),
+    #         title=title,
+    #     )
+    # except Exception as e:
+    #     print(e)
+
+    # try:
+    #     chain = LLMChain(llm=llm, prompt=prompt)
+    #     response = chain.run(content=content, title=title)
+    #     returned_topics = [
+    #         topic.replace("-", "").strip() for topic in response.content.split("\n")
+    #     ]
+    #     return returned_topics
     try:
-        chain = LLMChain(llm=llm, prompt=prompt)
-        response = chain.run(
-            question="identify 3 topics from the list provided only.",
-            docs=content,
-            topics=", ".join(topics),
-            title=title,
+        response = chatgpt(
+            chat_prompt.format_prompt(
+                content=content, title=title, topics=topics
+            ).to_messages()
         )
+        parsed_topics = [
+            topic.replace("-", "").strip() for topic in response.content.split("\n")
+        ]
+        return parsed_topics
     except Exception as e:
         print(e)
-
-    returned_topics = [topic.replace("-", "").strip() for topic in response.split("\n")]
-    return returned_topics
 
 
 # TODO: something more robust down the road...possibly tapping into our existing rules db collection

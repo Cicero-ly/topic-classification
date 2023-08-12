@@ -1,7 +1,6 @@
 import datetime
 import os
 from data_stores.mongodb import thoughts_db
-from langchain import LLMChain, PromptTemplate
 from langchain.chat_models import ChatOpenAI, ChatAnthropic
 from langchain.prompts.chat import (
     ChatPromptTemplate,
@@ -24,29 +23,49 @@ claude = ChatAnthropic(
 chatgpt = ChatOpenAI(temperature=0, model="gpt-3.5-turbo")
 
 
-def generate_summary(content, title, llm):
-    prompt = PromptTemplate(
-        input_variables=["content", "title"],
-        template="""
-        Write a 50-300 word summary of the following article, make sure to keep important names. Keep it professional and concise.
-        title: {title}
-        article content: {content}
-        """,
-    )
+def call_chat_model(llm, messages):
+    """
+    This is called "call_chat_model" because it accepts an array of messages (as opposed to a string, which would be
+    a simple completion for any LLM, not necessarily a chat LLM.)
+    """
     try:
-        chain = LLMChain(llm=llm, prompt=prompt)
-        response = chain.run(content=content, title=title)
-        response = response.replace("\n", "").strip()
+        response = llm(messages)
+        return response
     except Exception as e:
         print(e)
-        response = e
+
+
+def generate_summary(content, title):
+    system_message_prompt = SystemMessagePromptTemplate.from_template(
+        template="""
+            You are a frequent contributor to Wikipedia.
+        """
+    )
+
+    human_message_prompt = HumanMessagePromptTemplate.from_template(
+        template="""
+            Write a 50-300 word summary of the following article, make sure to keep important names. Keep it professional and concise.
+            I only want you to return the summary itself—do not include any announcements like "Here is the summary" or anything like that.
+
+            Article title: {title}
+            Article content: {content}
+        """
+    )
+
+    chat_prompt = ChatPromptTemplate.from_messages(
+        [system_message_prompt, human_message_prompt]
+    )
+
+    chat_messages = chat_prompt.format_prompt(
+        title=title, content=content
+    ).to_messages()
+
+    response = call_chat_model(claude, chat_messages)
+    response = response.content.replace("\n", "").strip()
     return response
 
 
-def generate_topics(content, title, llm):
-    if llm is None:
-        llm = chatgpt
-
+def generate_topics(content, title):
     system_message_prompt = SystemMessagePromptTemplate.from_template(
         template="""
             You are a frequent contributor to Wikipedia and have a deep understanding of its taxonomy.
@@ -72,75 +91,15 @@ def generate_topics(content, title, llm):
     chat_prompt = ChatPromptTemplate.from_messages(
         [system_message_prompt, human_message_prompt]
     )
+    chat_messages = chat_prompt.format_prompt(
+        topics=topics, title=title, content=content
+    ).to_messages()
 
-    # prompt = PromptTemplate(
-    #     input_variables=["topics", "title", "content"],
-    #     template="""
-    #         Pick three topics that properly match the article summary below, based on the topics list provided.
-    #         Your response format should be:
-    #         - TOPIC_1
-    #         - TOPIC_2
-    #         - TOPIC_3
-
-    #         Do not add a topic that isn't in this topics list: {topics}
-    #         Feel free to use less than three topics if you can't find three topics from the list that are a good fit.
-
-    #         Here is the article title: {title}
-    #         And finally, here is the article summary: {content}
-    #         """,
-    # )
-
-    # prompt = PromptTemplate(
-    #     input_variables=["question", "docs", "topics", "title"],
-    #     template="""
-    #   You are a WikiPedia assistant that that can identify main topics about the given video transcript or article.
-    #   You will pick topics that may be included for the article based on the topics list provided.
-    #   The format should be:
-    #   - TOPIC_1
-    #   - TOPIC_2
-    #   - TOPIC_3
-
-    #   Answer the following question: {question}
-
-    #   article title: {title}
-    #   By analyzing the following summary: {docs}
-
-    #   Make sure to always pick topics only from these following ones: {topics}
-    #   Never invent topics and if you can't find 3 topics englobing the article, you can use less.
-
-    #   """,
-    # )
-
-    # try:
-    #     chain = LLMChain(llm=llm, prompt=prompt)
-    #     response = chain.run(
-    #         question="identify 3 topics from the list provided only.",
-    #         docs=content,
-    #         topics=", ".join(topics),
-    #         title=title,
-    #     )
-    # except Exception as e:
-    #     print(e)
-
-    # try:
-    #     chain = LLMChain(llm=llm, prompt=prompt)
-    #     response = chain.run(content=content, title=title)
-    #     returned_topics = [
-    #         topic.replace("-", "").strip() for topic in response.content.split("\n")
-    #     ]
-    #     return returned_topics
-    try:
-        response = chatgpt(
-            chat_prompt.format_prompt(
-                content=content, title=title, topics=topics
-            ).to_messages()
-        )
-        parsed_topics = [
-            topic.replace("-", "").strip() for topic in response.content.split("\n")
-        ]
-        return parsed_topics
-    except Exception as e:
-        print(e)
+    response = call_chat_model(chatgpt, chat_messages)
+    parsed_topics = [
+        topic.replace("-", "").strip() for topic in response.content.split("\n")
+    ]
+    return parsed_topics
 
 
 # TODO: something more robust down the road...possibly tapping into our existing rules db collection
@@ -160,7 +119,7 @@ def thought_should_be_processed(content, title):
     return True
 
 
-def topic_classification(limit=10):
+def topic_classification(limit=1000):
     # print("active thought collections: ", os.environ["ACTIVE_THOUGHT_COLLECTIONS"])
     thoughts_to_classify = []
     # for collection in os.environ["ACTIVE_THOUGHT_COLLECTIONS"].split(","):
@@ -217,17 +176,10 @@ def topic_classification(limit=10):
         # print("_id", thought["_id"])
         # print("title: ", thought["title"])
 
-        summarization_llm = claude
-        topic_generation_llm = chatgpt
-
         now = datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
-        generated_summary = generate_summary(
-            thought["content"], thought["title"], llm=summarization_llm
-        )
+        generated_summary = generate_summary(thought["content"], thought["title"])
         # print("generated_summary: ", generated_summary)
-        generated_topics = generate_topics(
-            generated_summary, thought["title"], llm=topic_generation_llm
-        )
+        generated_topics = generate_topics(generated_summary, thought["title"])
         # print("generated_topics: ", generated_topics)
 
         updateOp = thoughts_db["test_topic_classification"].update_one(
@@ -268,5 +220,6 @@ def topic_classification(limit=10):
 
 
 if __name__ == "__main__":
-    x = topic_classification(limit=2)
+    # x = topic_classification(limit=1)
+    x = topic_classification()
     pprint(x)

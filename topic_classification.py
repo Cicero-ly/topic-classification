@@ -149,9 +149,14 @@ def topic_classification(limit=1000):
     ):
         content = ""
         if thought.get("vid") != None:
-            loader = YoutubeLoader.from_youtube_url(thought.get("url"))
-            transcript = loader.load()
-            content = transcript
+            try:
+                loader = YoutubeLoader.from_youtube_url(thought.get("url"))
+                transcript = loader.load()
+                content = transcript
+            # TODO: handle NoTranscriptFound exception
+            except Exception as e:
+                print(e)
+                continue
         elif thought.get("content_text") != None:
             content = thought["content_text"]
         else:

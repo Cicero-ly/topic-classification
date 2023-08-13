@@ -1,3 +1,4 @@
+import time
 import datetime
 import os
 from data_stores.mongodb import thoughts_db
@@ -11,7 +12,7 @@ from langchain.document_loaders import YoutubeLoader
 from pprint import pprint
 
 # TODO: fetch topics from db so this is always up-to-date
-from constants import topics
+from constants import topics as master_topics
 
 # Ramsis has custom class for Claude. Why?
 # It seems that in the Colab, he's instantiating with the default vars that are already set in a
@@ -44,9 +45,10 @@ def generate_summary(content, title):
 
     human_message_prompt = HumanMessagePromptTemplate.from_template(
         template="""
-            Write a 50-300 word summary of the following article, make sure to keep important names. Keep it professional and concise.
-            I only want you to return the summary itself—do not include any announcements like "Here is the summary" or anything like that.
-
+            Write a short summary of the following article, make sure to keep important names. Keep it professional and concise.
+            I only want you to return the summary itself. Do not include any announcements like "Here is the summary" in your response.
+            Most importantly, please make sure finish your thoughts—do not leave any sentences or thoughts incomplete!
+            
             Article title: {title}
             Article content: {content}
         """
@@ -80,11 +82,11 @@ def generate_topics(content, title):
             - TOPIC_2
             - TOPIC_3
 
-            Do not add a topic that isn't in this topics list: {topics}
+            Do not add a topic that isn't in this list of topics: {topics}
             Feel free to use less than three topics if you can't find three topics from the list that are a good fit.
 
-            Here is the article title: {title}
-            And finally, here is the article summary: {content}
+            Article title: {title}
+            Article summary: {content}
         """
     )
 
@@ -92,13 +94,18 @@ def generate_topics(content, title):
         [system_message_prompt, human_message_prompt]
     )
     chat_messages = chat_prompt.format_prompt(
-        topics=topics, title=title, content=content
+        topics=master_topics, title=title, content=content
     ).to_messages()
 
     response = call_chat_model(chatgpt, chat_messages)
-    parsed_topics = [
-        topic.replace("-", "").strip() for topic in response.content.split("\n")
-    ]
+
+    parsed_topics = []
+    for topic in response.content.split("\n"):
+        stripped_topic = topic.replace("-", "").strip()
+        if stripped_topic in master_topics:
+            parsed_topics.append(stripped_topic)
+        else:
+            print("Omitted this topic: ", stripped_topic)
     return parsed_topics
 
 
@@ -225,6 +232,9 @@ def topic_classification(limit=1000):
 
 
 if __name__ == "__main__":
-    # x = topic_classification(limit=1)
-    x = topic_classification()
+    tic = time.perf_counter()
+    x = topic_classification(limit=1)
+    # x = topic_classification()
+    toc = time.perf_counter()
     pprint(x)
+    print(f"Finished topic classification in {toc - tic:0.4f} seconds")

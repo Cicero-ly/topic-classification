@@ -3,7 +3,12 @@ import datetime
 import os
 from data_stores.mongodb import thoughts_db
 import openai
-from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
+from anthropic import (
+    Anthropic,
+    HUMAN_PROMPT,
+    AI_PROMPT,
+    APIStatusError as AnthropicAPIStatusError,
+)
 
 from langchain.document_loaders import YoutubeLoader
 import youtube_transcript_api
@@ -41,14 +46,23 @@ def generate_summary(content: str, title: str):
     """
 
     # response = call_chat_model(claude, chat_messages)
-    prompt = f"{HUMAN_PROMPT}: You are a frequent contributor to Wikipedia. \n\n{human_prompt}\n\n{AI_PROMPT}:\n\nSummary:\n\n"
-    completion = anthropic.completions.create(
-        prompt=prompt,
-        model="claude-instant-v1-100k",
-        max_tokens_to_sample=100000,
-        temperature=0,
-    )
-    response = completion.completion.strip(" \n")
+    retries = 5
+    for i in range(retries):
+        try:
+            prompt = f"{HUMAN_PROMPT}: You are a frequent contributor to Wikipedia. \n\n{human_prompt}\n\n{AI_PROMPT}:\n\nSummary:\n\n"
+            completion = anthropic.completions.create(
+                prompt=prompt,
+                model="claude-instant-v1-100k",
+                max_tokens_to_sample=100000,
+                temperature=0,
+            )
+            response = completion.completion.strip(" \n")
+            break
+        except AnthropicAPIStatusError:
+            print(
+                f"Anthropic API service unavailable. Retrying again... ({i+1}/{retries})"
+            )
+            time.sleep(1)
     return response
 
 
@@ -93,17 +107,24 @@ def generate_topics(content: str, title: str):
         Article summary: {content}
     """
 
-    completion = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        temperature=0,
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a frequent contributor to Wikipedia, and have a deep understanding of Wikipedia's categories and topics.",
-            },
-            {"role": "user", "content": human_prompt},
-        ],
-    )
+    retries = 5
+    for i in range(retries):
+        try:
+            completion = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                temperature=0,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a frequent contributor to Wikipedia, and have a deep understanding of Wikipedia's categories and topics.",
+                    },
+                    {"role": "user", "content": human_prompt},
+                ],
+            )
+            break
+        except openai.error.ServiceUnavailableError:
+            print(f"OpenAI service unavailable. Retrying again... ({i+1}/{retries})")
+            time.sleep(1)
 
     # print(completion.choices[0].message)
     response = completion.choices[0].message

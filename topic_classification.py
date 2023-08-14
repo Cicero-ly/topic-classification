@@ -6,10 +6,16 @@ import openai
 from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
 
 from langchain.document_loaders import YoutubeLoader
+import youtube_transcript_api
 from pprint import pprint
 
 # TODO: fetch topics from db so this is always up-to-date
 from constants import topics as master_topics
+from langchain import LLMChain, PromptTemplate
+from langchain.chat_models import ChatAnthropic
+
+# TODO: openai.error.ServiceUnavailableError: The server is overloaded or not ready yet.
+# Need a simple for loop retry for any openai requests to handle the above
 
 # Ramsis has custom class for Claude. Why?
 # It seems that in the Colab, he's instantiating with the default vars that are already set in a
@@ -23,36 +29,84 @@ anthropic = Anthropic()
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
 
-def call_chat_model(llm, messages):
-    """
-    This is called "call_chat_model" because it accepts an array of messages (as opposed to a string, which would be
-    a simple completion for any LLM, not necessarily a chat LLM.)
-    """
-    try:
-        response = llm(messages)
-        return response
-    except Exception as e:
-        print(e)
-
-
 def generate_summary(content: str, title: str):
+    # MODIFIED PROMPT
+    # human_prompt = f"""
+    #     Write a short summary of the following article, and make sure to keep important names. Keep it professional and concise.
+    #     I only want you to return the summary itself, as if it would be published on Wikipedia. Let's assume that your initial response is perfect, and that it doesn't need to be modified in any way.
+    #     Most importantly, please make sure finish your thoughts. Do not leave any sentences or thoughts incomplete!
+    #     Feel free to make your response shorter if you feel like you cannot capture the entire summary in the number of words you are allowed to provide.
+
+    #     Article title: {title}
+    #     Article content: {content}
+    # """
+
+    # ORIGINAL PROMPT
     human_prompt = f"""
-        Write a short summary of the following article, and make sure to keep important names. Keep it professional and concise.
-        I only want you to return the summary itself. Do not include any announcements like "Here is the summary" in your response.
-        Most importantly, please make sure finish your thoughts. Do not leave any sentences or thoughts incomplete! 
-        Feel free to make your response shorter if you feel like you cannot capture the entire summary in the number of words you are allowed to provide.
-            
-        Article title: {title}
-        Article content: {content}
+        Write a 50-300 word summary of the following article, make sure to keep important names there. Keep it professional and concise.
+
+        title: {title}
+        article content: {content}
     """
 
     # response = call_chat_model(claude, chat_messages)
-    prompt = f"{HUMAN_PROMPT}: You are a frequent contributor to Wikipedia. \n\n{human_prompt}\n\n{AI_PROMPT}:\n\nSummary"
+    prompt = f"{HUMAN_PROMPT}: You are a frequent contributor to Wikipedia. \n\n{human_prompt}\n\n{AI_PROMPT}:\n\nSummary:\n\n"
     completion = anthropic.completions.create(
         prompt=prompt, model="claude-instant-v1-100k", max_tokens_to_sample=100000
     )
-    response = completion.completion
+    response = completion.completion.strip(" \n")
     return response
+
+
+# Langchain version of the above
+# def generate_summary(content: str, title: str):
+#     claude = ChatAnthropic(model="claude-instant-v1-100k", max_tokens_to_sample=100000)
+#     prompt = PromptTemplate(
+#         input_variables=["content", "title"],
+#         template="""
+
+#                 Write a 50-300 word summary of the following article, make sure to keep important names there. Keep it professional and concise.
+
+#                 title: {title}
+#                 article content: {content}
+
+
+#                 """,
+#     )
+
+#     try:
+#         chain = LLMChain(llm=claude, prompt=prompt)
+#         response = chain.run(content=content, title=title)
+#         response = response.replace("\n", "").strip()
+#     except Exception as e:
+#         print(e)
+#         response = e
+#     return response
+
+
+def clean_up_claude_summary(content: str):
+    human_prompt = f"""
+        Below is a short summary of an article or video that an assistant of mine created, which they sent to me via email.
+        I want to you to identify any comments that my assistant included and cut them out, such that all that's left is the summary itself.
+        Sometimes, my assistant didn't include any comments, in which case—leave it alone.
+
+        Original summary from my assistant: {content}
+        New summary:
+    """
+    completion = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a frequent contributor to Wikipedia.",
+            },
+            {"role": "user", "content": human_prompt},
+        ],
+    )
+
+    # print(completion.choices[0].message)
+    response = completion.choices[0].message
+    return response.content
 
 
 def generate_topics(content: str, title: str):
@@ -65,6 +119,7 @@ def generate_topics(content: str, title: str):
 
         Do not add a topic that isn't in this list of topics: {master_topics}
         Feel free to use less than three topics if you can't find three topics from the list that are a good fit.
+        If you pick a topic that is two words or more, make sure every word is capitalized (not just the first word).
 
         Article title: {title}
         Article summary: {content}
@@ -145,9 +200,8 @@ def topic_classification(limit=1000):
                 loader = YoutubeLoader.from_youtube_url(thought.get("url"))
                 transcript = loader.load()
                 content = transcript
-            # TODO: handle NoTranscriptFound exception
-            except Exception as e:
-                print(e)
+            except youtube_transcript_api._errors.NoTranscriptFound as e:
+                print(f"No transcript found for youtube video {thought['url']}")
                 continue
         elif thought.get("content_text") != None:
             content = thought["content_text"]
@@ -174,16 +228,20 @@ def topic_classification(limit=1000):
         # print("title: ", thought["title"])
 
         now = datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
-        generated_summary = generate_summary(thought["content"], thought["title"])
-        # print("generated_summary: ", generated_summary)
-        generated_topics = generate_topics(generated_summary, thought["title"])
+        claude_generated_summary = generate_summary(
+            thought["content"], thought["title"]
+        )
+        final_generated_summary = clean_up_claude_summary(claude_generated_summary)
+        # TODO: throw a warning if summary doesn't end in "." or "?" (summary seems incomplete).
+        # print("generated_summary: ",final_generated_summary)
+        generated_topics = generate_topics(final_generated_summary, thought["title"])
         # print("generated_topics: ", generated_topics)
 
         updateOp = thoughts_db["test_topic_classification"].update_one(
             {"_id": thought["_id"]},
             {
                 "$set": {
-                    "summary": generated_summary,
+                    "llm_generated_summary": final_generated_summary,
                     "llm_generated_topics": generated_topics,
                     "llm_processing_metadata": {
                         "workflows_performed": [
@@ -198,7 +256,10 @@ def topic_classification(limit=1000):
                                 "last_performed": now,
                             },
                         ],
-                        "fields_written": ["summary", "llm_generated_topics"],
+                        "fields_written": [
+                            "llm_generated_summary",
+                            "llm_generated_topics",
+                        ],
                     },
                 }
             },
@@ -210,6 +271,8 @@ def topic_classification(limit=1000):
                     "_id": thought["_id"],
                     "title": thought["title"],
                     "llm_topics": generated_topics,
+                    "claude_summary": claude_generated_summary,
+                    "chatgpt_cleaned_summary": final_generated_summary,
                 }
             )
 
@@ -222,3 +285,4 @@ if __name__ == "__main__":
     # x = topic_classification()
     toc = time.perf_counter()
     pprint(x)
+    print(f"Time elapsed: {toc-tic:0.4f}")

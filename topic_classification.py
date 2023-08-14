@@ -11,20 +11,10 @@ from pprint import pprint
 
 # TODO: fetch topics from db so this is always up-to-date
 from constants import topics as master_topics
-from langchain import LLMChain, PromptTemplate
-from langchain.chat_models import ChatAnthropic
 
 # TODO: openai.error.ServiceUnavailableError: The server is overloaded or not ready yet.
 # Need a simple for loop retry for any openai requests to handle the above
 
-# Ramsis has custom class for Claude. Why?
-# It seems that in the Colab, he's instantiating with the default vars that are already set in a
-# vanilla instantiation of ChatAnthropic(). Only one I'm unsure of: stop_sequences (which technically isn't available in https://api.python.langchain.com/en/latest/chat_models/langchain.chat_models.anthropic.ChatAnthropic.html#langchain.chat_models.anthropic.ChatAnthropic)
-# also his custom class sets up the right prompt format ({HUMAN_PROMPT}\n{prompt}\n\n{AI_PROMPT}\n) which ChatAnthropic() already does
-
-# claude = ChatAnthropic(
-#     model="claude-instant-v1-100k", anthropic_api_key=os.environ["ANTHROPIC_API_KEY"]
-# )
 anthropic = Anthropic()
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
@@ -43,7 +33,8 @@ def generate_summary(content: str, title: str):
 
     # ORIGINAL PROMPT
     human_prompt = f"""
-        Write a 50-300 word summary of the following article, make sure to keep important names there. Keep it professional and concise.
+        Write a 50-300 word summary of the following article, make sure to keep important names. 
+        Keep it professional and concise.
 
         title: {title}
         article content: {content}
@@ -52,61 +43,38 @@ def generate_summary(content: str, title: str):
     # response = call_chat_model(claude, chat_messages)
     prompt = f"{HUMAN_PROMPT}: You are a frequent contributor to Wikipedia. \n\n{human_prompt}\n\n{AI_PROMPT}:\n\nSummary:\n\n"
     completion = anthropic.completions.create(
-        prompt=prompt, model="claude-instant-v1-100k", max_tokens_to_sample=100000
+        prompt=prompt,
+        model="claude-instant-v1-100k",
+        max_tokens_to_sample=100000,
+        temperature=0,
     )
     response = completion.completion.strip(" \n")
     return response
 
 
-# Langchain version of the above
-# def generate_summary(content: str, title: str):
-#     claude = ChatAnthropic(model="claude-instant-v1-100k", max_tokens_to_sample=100000)
-#     prompt = PromptTemplate(
-#         input_variables=["content", "title"],
-#         template="""
+# def clean_up_claude_summary(content: str):
+#     human_prompt = f"""
+#         Below is a short summary of an article or video that an assistant of mine created, which they sent to me via email.
+#         I want to you to identify any comments that my assistant included and cut them out, such that all that's left is the summary itself.
+#         Sometimes, my assistant didn't include any comments, in which case—leave it alone.
 
-#                 Write a 50-300 word summary of the following article, make sure to keep important names there. Keep it professional and concise.
-
-#                 title: {title}
-#                 article content: {content}
-
-
-#                 """,
+#         Original summary from my assistant: {content}
+#         New summary:
+#     """
+#     completion = openai.ChatCompletion.create(
+#         model="gpt-3.5-turbo",
+#         # TODO: temperature=0
+#         messages=[
+#             {
+#                 "role": "system",
+#                 "content": "You are a frequent contributor to Wikipedia.",
+#             },
+#             {"role": "user", "content": human_prompt},
+#         ],
 #     )
 
-#     try:
-#         chain = LLMChain(llm=claude, prompt=prompt)
-#         response = chain.run(content=content, title=title)
-#         response = response.replace("\n", "").strip()
-#     except Exception as e:
-#         print(e)
-#         response = e
-#     return response
-
-
-def clean_up_claude_summary(content: str):
-    human_prompt = f"""
-        Below is a short summary of an article or video that an assistant of mine created, which they sent to me via email.
-        I want to you to identify any comments that my assistant included and cut them out, such that all that's left is the summary itself.
-        Sometimes, my assistant didn't include any comments, in which case—leave it alone.
-
-        Original summary from my assistant: {content}
-        New summary:
-    """
-    completion = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a frequent contributor to Wikipedia.",
-            },
-            {"role": "user", "content": human_prompt},
-        ],
-    )
-
-    # print(completion.choices[0].message)
-    response = completion.choices[0].message
-    return response.content
+#     response = completion.choices[0].message
+#     return response.content
 
 
 def generate_topics(content: str, title: str):
@@ -127,6 +95,7 @@ def generate_topics(content: str, title: str):
 
     completion = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
+        temperature=0,
         messages=[
             {
                 "role": "system",
@@ -175,7 +144,7 @@ def topic_classification(limit=1000):
         {
             "valuable": True,
             "title": {"$ne": None},
-            # TODO: Do we want to re-classify thoughts that have been classified?
+            # TODO: Do we want to filter for thoughts that have already been topic-classified?
             # If so, remove this
             "llm_generated_topics": None,
             "url": {"$ne": None},
@@ -200,7 +169,7 @@ def topic_classification(limit=1000):
                 loader = YoutubeLoader.from_youtube_url(thought.get("url"))
                 transcript = loader.load()
                 content = transcript
-            except youtube_transcript_api._errors.NoTranscriptFound as e:
+            except youtube_transcript_api._errors.NoTranscriptFound:
                 print(f"No transcript found for youtube video {thought['url']}")
                 continue
         elif thought.get("content_text") != None:
@@ -223,19 +192,14 @@ def topic_classification(limit=1000):
 
     thoughts_classified = []
     for thought in thoughts_to_classify:
-        # print("collection", thought["collection"])
-        # print("_id", thought["_id"])
-        # print("title: ", thought["title"])
-
         now = datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
         claude_generated_summary = generate_summary(
             thought["content"], thought["title"]
         )
-        final_generated_summary = clean_up_claude_summary(claude_generated_summary)
+        # final_generated_summary = clean_up_claude_summary(claude_generated_summary)
+        final_generated_summary = claude_generated_summary
         # TODO: throw a warning if summary doesn't end in "." or "?" (summary seems incomplete).
-        # print("generated_summary: ",final_generated_summary)
         generated_topics = generate_topics(final_generated_summary, thought["title"])
-        # print("generated_topics: ", generated_topics)
 
         updateOp = thoughts_db["test_topic_classification"].update_one(
             {"_id": thought["_id"]},
@@ -272,7 +236,7 @@ def topic_classification(limit=1000):
                     "title": thought["title"],
                     "llm_topics": generated_topics,
                     "claude_summary": claude_generated_summary,
-                    "chatgpt_cleaned_summary": final_generated_summary,
+                    # "chatgpt_cleaned_summary": final_generated_summary,
                 }
             )
 
@@ -281,8 +245,13 @@ def topic_classification(limit=1000):
 
 if __name__ == "__main__":
     tic = time.perf_counter()
-    x = topic_classification(limit=10)
+    x = topic_classification(limit=100)
     # x = topic_classification()
     toc = time.perf_counter()
     pprint(x)
     print(f"Time elapsed: {toc-tic:0.4f}")
+
+# TODO: add back db -> collection for loop
+# TODO: add back if_thought_should_be_classified filter
+# TODO: clean up
+# TODO: collect the "omitted topics" to later analyze for good additions to our topics list!

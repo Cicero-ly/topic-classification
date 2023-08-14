@@ -2,12 +2,9 @@ import time
 import datetime
 import os
 from data_stores.mongodb import thoughts_db
-from langchain.chat_models import ChatOpenAI, ChatAnthropic
-from langchain.prompts.chat import (
-    ChatPromptTemplate,
-    SystemMessagePromptTemplate,
-    HumanMessagePromptTemplate,
-)
+import openai
+from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
+
 from langchain.document_loaders import YoutubeLoader
 from pprint import pprint
 
@@ -18,10 +15,12 @@ from constants import topics as master_topics
 # It seems that in the Colab, he's instantiating with the default vars that are already set in a
 # vanilla instantiation of ChatAnthropic(). Only one I'm unsure of: stop_sequences (which technically isn't available in https://api.python.langchain.com/en/latest/chat_models/langchain.chat_models.anthropic.ChatAnthropic.html#langchain.chat_models.anthropic.ChatAnthropic)
 # also his custom class sets up the right prompt format ({HUMAN_PROMPT}\n{prompt}\n\n{AI_PROMPT}\n) which ChatAnthropic() already does
-claude = ChatAnthropic(
-    model="claude-instant-v1-100k", anthropic_api_key=os.environ["ANTHROPIC_API_KEY"]
-)
-chatgpt = ChatOpenAI(temperature=0, model="gpt-3.5-turbo")
+
+# claude = ChatAnthropic(
+#     model="claude-instant-v1-100k", anthropic_api_key=os.environ["ANTHROPIC_API_KEY"]
+# )
+anthropic = Anthropic()
+openai.api_key = os.environ["OPENAI_API_KEY"]
 
 
 def call_chat_model(llm, messages):
@@ -36,68 +35,54 @@ def call_chat_model(llm, messages):
         print(e)
 
 
-def generate_summary(content, title):
-    system_message_prompt = SystemMessagePromptTemplate.from_template(
-        template="""
-            You are a frequent contributor to Wikipedia.
-        """
-    )
-
-    human_message_prompt = HumanMessagePromptTemplate.from_template(
-        template="""
-            Write a short summary of the following article, make sure to keep important names. Keep it professional and concise.
-            I only want you to return the summary itself. Do not include any announcements like "Here is the summary" in your response.
-            Most importantly, please make sure finish your thoughts—do not leave any sentences or thoughts incomplete!
+def generate_summary(content: str, title: str):
+    human_prompt = f"""
+        Write a short summary of the following article, and make sure to keep important names. Keep it professional and concise.
+        I only want you to return the summary itself. Do not include any announcements like "Here is the summary" in your response.
+        Most importantly, please make sure finish your thoughts. Do not leave any sentences or thoughts incomplete! 
+        Feel free to make your response shorter if you feel like you cannot capture the entire summary in the number of words you are allowed to provide.
             
-            Article title: {title}
-            Article content: {content}
-        """
+        Article title: {title}
+        Article content: {content}
+    """
+
+    # response = call_chat_model(claude, chat_messages)
+    prompt = f"{HUMAN_PROMPT}: You are a frequent contributor to Wikipedia. \n\n{human_prompt}\n\n{AI_PROMPT}:\n\nSummary"
+    completion = anthropic.completions.create(
+        prompt=prompt, model="claude-instant-v1-100k", max_tokens_to_sample=100000
     )
-
-    chat_prompt = ChatPromptTemplate.from_messages(
-        [system_message_prompt, human_message_prompt]
-    )
-
-    chat_messages = chat_prompt.format_prompt(
-        title=title, content=content
-    ).to_messages()
-
-    response = call_chat_model(claude, chat_messages)
-    response = response.content.replace("\n", "").strip()
+    response = completion.completion
     return response
 
 
-def generate_topics(content, title):
-    system_message_prompt = SystemMessagePromptTemplate.from_template(
-        template="""
-            You are a frequent contributor to Wikipedia and have a deep understanding of its taxonomy.
-        """
+def generate_topics(content: str, title: str):
+    human_prompt = f"""
+        Pick three topics that properly match the article summary below, based on the topics list provided.
+        Your response format should be:
+        - TOPIC_1
+        - TOPIC_2
+        - TOPIC_3
+
+        Do not add a topic that isn't in this list of topics: {master_topics}
+        Feel free to use less than three topics if you can't find three topics from the list that are a good fit.
+
+        Article title: {title}
+        Article summary: {content}
+    """
+
+    completion = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a frequent contributor to Wikipedia, and have a deep understanding of Wikipedia's categories and topics.",
+            },
+            {"role": "user", "content": human_prompt},
+        ],
     )
 
-    human_message_prompt = HumanMessagePromptTemplate.from_template(
-        template="""
-            Pick three topics that properly match the article summary below, based on the topics list provided.
-            Your response format should be:
-            - TOPIC_1
-            - TOPIC_2
-            - TOPIC_3
-
-            Do not add a topic that isn't in this list of topics: {topics}
-            Feel free to use less than three topics if you can't find three topics from the list that are a good fit.
-
-            Article title: {title}
-            Article summary: {content}
-        """
-    )
-
-    chat_prompt = ChatPromptTemplate.from_messages(
-        [system_message_prompt, human_message_prompt]
-    )
-    chat_messages = chat_prompt.format_prompt(
-        topics=master_topics, title=title, content=content
-    ).to_messages()
-
-    response = call_chat_model(chatgpt, chat_messages)
+    # print(completion.choices[0].message)
+    response = completion.choices[0].message
 
     parsed_topics = []
     for topic in response.content.split("\n"):
@@ -233,8 +218,7 @@ def topic_classification(limit=1000):
 
 if __name__ == "__main__":
     tic = time.perf_counter()
-    x = topic_classification(limit=1)
+    x = topic_classification(limit=10)
     # x = topic_classification()
     toc = time.perf_counter()
     pprint(x)
-    print(f"Finished topic classification in {toc - tic:0.4f} seconds")

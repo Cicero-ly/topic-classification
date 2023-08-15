@@ -230,75 +230,81 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
 def main(single_collection_find_limit=1000):
     # Setup/init
     job_id = utils.create_job()
+    thoughts_classified: List[ObjectId] = []
+    all_incomplete_summaries = []
+    all_rejected_topics = {}
+    errors = []
 
     # Collate thoughts
     classification_candidates = collect_thoughts_for_classification(
         single_collection_find_limit
     )
-    thoughts_classified: List[ObjectId] = []
-    all_incomplete_summaries = []
-    all_rejected_topics = {}
 
     # Summarize + classify each thought
     for thought in classification_candidates["thoughts_to_classify"]:
-        generated_summary = generate_summary(thought["content"], thought["title"])
-        if summary_seems_incomplete(generated_summary):
-            all_incomplete_summaries.append(
+        try:
+            generated_summary = generate_summary(thought["content"], thought["title"])
+            if summary_seems_incomplete(generated_summary):
+                all_incomplete_summaries.append(
+                    {
+                        "_id": thought["_id"],
+                        "title": thought["title"],
+                        "generated_summary": generated_summary,
+                    }
+                )
+
+            generated_topics = generate_topics(generated_summary, thought["title"])
+
+            # Here we compile all rejected topics for later analysis. We don't need to include
+            # reference to the original thought, because the thought itself will contain its own list of
+            # accepted and rejected topics.
+            for topic in generated_topics["rejected_topics"]:
+                if hasattr(all_rejected_topics, topic):
+                    all_rejected_topics[topic] += 1
+                else:
+                    all_rejected_topics[topic] = 1
+
+            now = utils.get_now()
+
+            workflows_completed = [
                 {
-                    "_id": thought["_id"],
-                    "title": thought["title"],
-                    "generated_summary": generated_summary,
-                }
+                    "name": "summarization",
+                    "model": "claude-instant-v1-100k",
+                    "last_performed": now,
+                },
+                {
+                    "name": "topic_classification",
+                    "model": "chatgpt-3.5-turbo",
+                    "last_performed": now,
+                },
+            ]
+
+            update_op = thoughts_db[thought["collection"]].update_one(
+                {"_id": thought["_id"]},
+                {
+                    "$set": {
+                        "llm_generated_summary": generated_summary,
+                        "llm_generated_topics": generated_topics,  # This includes both accepted and rejected topics.
+                        "llm_processing_metadata": {
+                            "workflows_completed": workflows_completed,
+                            "fields_written": [
+                                "llm_generated_summary",
+                                "llm_generated_topics",
+                            ],
+                        },
+                    }
+                },
             )
 
-        generated_topics = generate_topics(generated_summary, thought["title"])
+            if update_op.modified_count == 1:
+                thoughts_classified.append(
+                    {"collection": thought["collection"], "_id": thought["_id"]}
+                )
+        except Exception as e:
+            errors.append(e)
+            print(e)
 
-        # Here we compile all rejected topics for later analysis. We don't need to include
-        # reference to the original thought, because the thought itself will contain its own list of
-        # accepted and rejected topics.
-        for topic in generated_topics["rejected_topics"]:
-            if hasattr(all_rejected_topics, topic):
-                all_rejected_topics[topic] += 1
-            else:
-                all_rejected_topics[topic] = 1
-
-        now = utils.get_now()
-
-        workflows_completed = [
-            {
-                "name": "summarization",
-                "model": "claude-instant-v1-100k",
-                "last_performed": now,
-            },
-            {
-                "name": "topic_classification",
-                "model": "chatgpt-3.5-turbo",
-                "last_performed": now,
-            },
-        ]
-
-        update_op = thoughts_db[thought["collection"]].update_one(
-            {"_id": thought["_id"]},
-            {
-                "$set": {
-                    "llm_generated_summary": generated_summary,
-                    "llm_generated_topics": generated_topics,  # This includes both accepted and rejected topics.
-                    "llm_processing_metadata": {
-                        "workflows_completed": workflows_completed,
-                        "fields_written": [
-                            "llm_generated_summary",
-                            "llm_generated_topics",
-                        ],
-                    },
-                }
-            },
-        )
-
-        if update_op.modified_count == 1:
-            thoughts_classified.append(
-                {"collection": thought["collection"], "_id": thought["_id"]}
-            )
-
+    # Finish up, log the job
     utils.update_job(
         job_id,
         {

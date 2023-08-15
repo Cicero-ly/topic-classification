@@ -303,7 +303,7 @@ def main(single_collection_find_limit=1000):
                     {"collection": thought["collection"], "_id": thought["_id"]}
                 )
         except Exception as e:
-            errors.append(e)
+            errors.append(str(e))
             print(e)
 
     # Finish up, log the job

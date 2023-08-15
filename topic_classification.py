@@ -109,7 +109,7 @@ def generate_topics(content: str, title: str):
 
 
 def summary_seems_incomplete(summary: str):
-    terminated_sentence_pattern = r"[.?]{1,3}[\"\']?$"
+    terminated_sentence_pattern = r"[.?!][\"\']?$"
     if not re.search(terminated_sentence_pattern, summary):
         return True
     return False

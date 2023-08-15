@@ -12,7 +12,9 @@ def get_now() -> float:
 
 def create_job():
     now = get_now()
-    insert_op = ml_jobs.insert_one({"last_updated": now})
+    insert_op = ml_jobs.insert_one(
+        {"type": "topic_classification", "last_updated": now}
+    )
     return insert_op.inserted_id
 
 

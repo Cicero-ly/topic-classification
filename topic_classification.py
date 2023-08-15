@@ -1,3 +1,4 @@
+import re
 import time
 import datetime
 import os
@@ -14,7 +15,7 @@ from langchain.document_loaders import YoutubeLoader
 import youtube_transcript_api
 from pprint import pprint
 
-# TODO: fetch topics from db so this is always up-to-date
+# TODO: LATER: fetch topics from db so this is always up-to-date
 from constants import topics as master_topics
 
 
@@ -49,31 +50,6 @@ def generate_summary(content: str, title: str):
             )
             time.sleep(1)
     return response
-
-
-# def clean_up_claude_summary(content: str):
-#     human_prompt = f"""
-#         Below is a short summary of an article or video that an assistant of mine created, which they sent to me via email.
-#         I want to you to identify any comments that my assistant included and cut them out, such that all that's left is the summary itself.
-#         Sometimes, my assistant didn't include any comments, in which case—leave it alone.
-
-#         Original summary from my assistant: {content}
-#         New summary:
-#     """
-#     completion = openai.ChatCompletion.create(
-#         model="gpt-3.5-turbo",
-#         # TODO: temperature=0
-#         messages=[
-#             {
-#                 "role": "system",
-#                 "content": "You are a frequent contributor to Wikipedia.",
-#             },
-#             {"role": "user", "content": human_prompt},
-#         ],
-#     )
-
-#     response = completion.choices[0].message
-#     return response.content
 
 
 def generate_topics(content: str, title: str):
@@ -111,7 +87,6 @@ def generate_topics(content: str, title: str):
             print(f"OpenAI service unavailable. Retrying again... ({i+1}/{retries})")
             time.sleep(1)
 
-    # print(completion.choices[0].message)
     response = completion.choices[0].message
 
     parsed_topics = []
@@ -124,7 +99,14 @@ def generate_topics(content: str, title: str):
     return parsed_topics
 
 
-# TODO: something more robust down the road...possibly tapping into our existing rules db collection
+def summary_seems_incomplete(summary: str):
+    regExp = r"[^.?]$"  # A regular expression that matches for end-of-strings which do NOT end in a period or question mark.
+    if re.search(regExp, summary):
+        return True
+    return False
+
+
+# TODO: LATER: something more robust down the road...possibly tapping into our existing rules db collection
 def thought_should_be_processed(content, title):
     """
     Determine if thought should be processed according to simple filter rules.
@@ -141,16 +123,34 @@ def thought_should_be_processed(content, title):
     return True
 
 
-def topic_classification(limit=1000):
+def store_transcript(thought_pointer, transcript):
+    # thought_collection = thought_pointer["collection"]
+    thought_id = thought_pointer["_id"]
+
+    # updateOp = thoughts_db[thought_collection].update_one(
+    #     {"_id": thought_id}, {"$set": {"content_transcript": transcript}}
+    # )
+
+    # TEST
+    updateOp = thoughts_db["test_topic_classification"].update_one(
+        {"_id": thought_id}, {"$set": {"content_transcript": transcript}}
+    )
+
+    return updateOp.modified_count
+
+
+def collect_thoughts_for_classification(limit=1000):
     # print("active thought collections: ", os.environ["ACTIVE_THOUGHT_COLLECTIONS"])
     thoughts_to_classify = []
+    thoughts_to_skip = []
     # for collection in os.environ["ACTIVE_THOUGHT_COLLECTIONS"].split(","):
     # for thought in thoughts_db[collection].find(
     for thought in thoughts_db["test_topic_classification"].find(
         {
+            "collection": "yt",
             "valuable": True,
             "title": {"$ne": None},
-            # TODO: Do we want to filter for thoughts that have already been topic-classified?
+            # TODO: LATER: Do we want to filter for thoughts that have already been topic-classified?
             # If so, remove this
             "llm_generated_topics": None,
             "url": {"$ne": None},
@@ -174,8 +174,18 @@ def topic_classification(limit=1000):
             try:
                 loader = YoutubeLoader.from_youtube_url(thought.get("url"))
                 transcript = loader.load()
-                content = transcript
-                # TODO: store transcript
+                if len(transcript) > 0:
+                    content = transcript[0].page_content
+                    documents_modified = store_transcript(
+                        {
+                            # "collection": "yt",
+                            "_id": thought["_id"]
+                        },
+                        content,
+                    )
+                    if documents_modified == 0:
+                        # throw some warning about "transcript not saved"
+                        pass
             except youtube_transcript_api._errors.NoTranscriptFound:
                 print(f"No transcript found for youtube video {thought['url']}")
                 continue
@@ -184,35 +194,50 @@ def topic_classification(limit=1000):
         else:
             continue
 
+        lean_thought_for_processing = {
+            # "collection": collection,
+            # "collection": thought["collection"],
+            "_id": thought["_id"],
+            "content": content,
+            "title": thought["title"],
+        }
         if thought_should_be_processed(content, thought["title"]):
-            thoughts_to_classify.append(
-                {
-                    # "collection": collection,
-                    # "collection": thought["collection"],
-                    "_id": thought["_id"],
-                    "title": thought["title"],
-                    "content": content,
-                }
-            )
+            thoughts_to_classify.append(lean_thought_for_processing)
+        else:
+            thoughts_to_skip.append(lean_thought_for_processing)
 
-    print("thoughts_to_classify length:", len(thoughts_to_classify))
+    return {
+        "thoughts_to_classify": thoughts_to_classify,
+        "thoughts_to_classify_count": len(thoughts_to_classify),
+        "thoughts_to_skip": thoughts_to_skip,
+        "thoughts_to_skip_count": len(thoughts_to_skip),
+    }
 
+
+def topic_classification(limit=1000):
+    classification_candidates = collect_thoughts_for_classification(limit)
+    print(
+        "thoughts to classify #: ",
+        classification_candidates["thoughts_to_classify_count"],
+    )
+    print("thoughts to skip #: ", classification_candidates["thoughts_to_skip_count"])
     thoughts_classified = []
-    for thought in thoughts_to_classify:
+
+    for thought in classification_candidates["thoughts_to_classify"]:
         now = datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
-        claude_generated_summary = generate_summary(
-            thought["content"], thought["title"]
-        )
-        # final_generated_summary = clean_up_claude_summary(claude_generated_summary)
-        final_generated_summary = claude_generated_summary
-        # TODO: throw a warning if summary doesn't end in "." or "?" (summary seems incomplete).
-        generated_topics = generate_topics(final_generated_summary, thought["title"])
+
+        generated_summary = generate_summary(thought["content"], thought["title"])
+        if summary_seems_incomplete:
+            # TODO: do something, like add to a job metadata in cicero_jobs.ml_jobs (total # of "seems incomplete" with embedded examples)
+            pass
+
+        generated_topics = generate_topics(generated_summary, thought["title"])
 
         updateOp = thoughts_db["test_topic_classification"].update_one(
             {"_id": thought["_id"]},
             {
                 "$set": {
-                    "llm_generated_summary": final_generated_summary,
+                    "llm_generated_summary": generated_summary,
                     "llm_generated_topics": generated_topics,
                     "llm_processing_metadata": {
                         "workflows_completed": [
@@ -237,28 +262,19 @@ def topic_classification(limit=1000):
         )
 
         if updateOp.modified_count == 1:
-            thoughts_classified.append(
-                {
-                    "_id": thought["_id"],
-                    "title": thought["title"],
-                    "llm_topics": generated_topics,
-                    "claude_summary": claude_generated_summary,
-                    # "chatgpt_cleaned_summary": final_generated_summary,
-                }
-            )
+            thoughts_classified.append(thought["_id"])
 
     return dict(
         {
-            # "thoughts_classified": thoughts_classified,
-            "quantity_thoughts_classified": len(thoughts_classified),
+            "quantity_thoughts_modified": len(thoughts_classified),
         }
     )
 
 
 if __name__ == "__main__":
     tic = time.perf_counter()
-    # x = topic_classification(limit=5)
-    x = topic_classification()
+    x = topic_classification(limit=10)
+    # x = topic_classification()
     toc = time.perf_counter()
     pprint(x)
     print(f"Time elapsed: {toc-tic:0.4f}")

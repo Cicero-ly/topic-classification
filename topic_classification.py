@@ -115,20 +115,20 @@ def summary_seems_incomplete(summary: str):
 
 
 # TODO: LATER: something more robust down the road...possibly tapping into our existing rules db collection
-def thought_should_be_processed(thought, parsedContent):
+def thought_should_be_processed(thought, parsed_content):
     """
     Determine if thought should be processed according to simple filter rules.
     """
     # Tyler Cowen
     if "assorted links" in thought["title"]:
         return False
-    if "appeared first on Marginal REVOLUTION" in parsedContent[-250:]:
+    if "appeared first on Marginal REVOLUTION" in parsed_content[-250:]:
         return False
     # Content too short
-    if len(parsedContent) < 450:
+    if len(parsed_content) < 450:
         return False
     # Content is already truncated
-    if "read more" in parsedContent[-250:]:
+    if "read more" in parsed_content[-250:]:
         return False
     # Ignore content from voice "Public"
     if ObjectId("64505e4c509cac9a8e7e226d") in thought["voicesInContent"]:
@@ -137,89 +137,86 @@ def thought_should_be_processed(thought, parsedContent):
 
 
 def store_transcript(thought_pointer, transcript):
-    # thought_collection = thought_pointer["collection"]
+    thought_collection = thought_pointer["collection"]
     thought_id = thought_pointer["_id"]
 
-    # update_op = thoughts_db[thought_collection].update_one(
-    #     {"_id": thought_id}, {"$set": {"content_transcript": transcript}}
-    # )
-
-    # TEST
-    update_op = thoughts_db["test_topic_classification"].update_one(
+    update_op = thoughts_db[thought_collection].update_one(
         {"_id": thought_id}, {"$set": {"content_transcript": transcript}}
     )
 
     return update_op.modified_count
 
 
-def collect_thoughts_for_classification(limit=1000):
-    # print("active thought collections: ", os.environ["ACTIVE_THOUGHT_COLLECTIONS"])
+def collect_thoughts_for_classification(single_collection_find_limit=1000):
+    active_thought_collections = os.environ["ACTIVE_THOUGHT_COLLECTIONS"].split(",")
+    print("active thought collections: ", active_thought_collections)
     thoughts_to_classify = []
     thoughts_to_skip = []
-    # for collection in os.environ["ACTIVE_THOUGHT_COLLECTIONS"].split(","):
-    # for thought in thoughts_db[collection].find(
-    for thought in thoughts_db["test_topic_classification"].find(
-        {
-            "valuable": True,
-            "reviewed": True,
-            "title": {"$ne": None},
-            # TODO: LATER: Do we want to filter for thoughts that have already been topic-classified?
-            # If so, remove this
-            "llm_generated_topics": None,
-            "url": {"$ne": None},
-            "$or": [
-                # conditionally find content_text if articles only
-                {"content_text": {"$ne": None}},
-                {"vid": {"$ne": None}},
-            ],
-        },
-        {
-            "_id": 1,
-            "url": 1,
-            "vid": 1,
-            "title": 1,
-            "content_text": 1,
-            "voicesInContent": 1,
-        },
-        limit=limit,
-    ):
-        parsedContent = ""
-        if thought.get("vid") != None:
-            try:
-                loader = YoutubeLoader.from_youtube_url(thought.get("url"))
-                transcript = loader.load()
-                if len(transcript) > 0:
-                    parsedContent = transcript[0].page_content
-                    documents_modified = store_transcript(
-                        {
-                            # "collection": "yt",
-                            "_id": thought["_id"]
-                        },
-                        parsedContent,
-                    )
-                    if documents_modified == 0:
-                        # throw some warning about "transcript not saved"
-                        pass
-            except youtube_transcript_api._errors.NoTranscriptFound:
-                print(f"No transcript found for youtube video {thought['url']}")
-                continue
-        elif thought.get("content_text") != None:
-            parsedContent = thought["content_text"]
-        else:
-            continue
 
-        # Only the fields necessary for performing summarization/topic classification.
-        lean_thought_for_processing = {
-            # "collection": collection,
-            # "collection": thought["collection"],
-            "_id": thought["_id"],
-            "content": parsedContent,
-            "title": thought["title"],
-        }
-        if thought_should_be_processed(thought, parsedContent):
-            thoughts_to_classify.append(lean_thought_for_processing)
-        else:
-            thoughts_to_skip.append(lean_thought_for_processing)
+    for collection in active_thought_collections:
+        for thought in thoughts_db[collection].find(
+            {
+                "valuable": True,
+                "reviewed": True,
+                "title": {"$exists": True},
+                "llm_generated_topics": None,
+                "url": {"$exists": True},
+                "$or": [
+                    # If it's an article, it will have "content_text". If it's a youtube video, it will have "vid".
+                    {"content_text": {"$exists": True}},
+                    {"vid": {"$exists": True}},
+                ],
+            },
+            # Projections
+            {
+                "_id": 1,
+                "url": 1,
+                "vid": 1,
+                "title": 1,
+                "content_text": 1,
+                # Used for filtering out certain voices to prevent classification
+                "voicesInContent": 1,
+            },
+            limit=single_collection_find_limit,
+        ):
+            parsed_content = ""
+            # TODO: Refactor this out
+            if thought.get("vid") != None:
+                try:
+                    loader = YoutubeLoader.from_youtube_url(thought.get("url"))
+                    document_list = loader.load()
+                    if len(document_list) > 0:
+                        transcript = document_list[0].page_content
+                        parsed_content = transcript
+                        documents_modified = store_transcript(
+                            {
+                                "collection": collection,
+                                "_id": thought["_id"],
+                            },
+                            transcript,
+                        )
+                        if documents_modified == 0:
+                            # TODO: LATER: throw some warning about "transcript not saved"
+                            pass
+                except youtube_transcript_api._errors.NoTranscriptFound:
+                    print(f"No transcript found for youtube video {thought['url']}")
+                    continue
+            elif thought.get("content_text") != None:
+                parsed_content = thought["content_text"]
+            else:
+                continue
+
+            # Return only the fields necessary for performing summarization/topic classification.
+            lean_thought_for_processing = {
+                "collection": collection,
+                "_id": thought["_id"],
+                "content": parsed_content,
+                "title": thought["title"],
+            }
+            if thought_should_be_processed(thought, parsed_content):
+                thoughts_to_classify.append(lean_thought_for_processing)
+            else:
+                thoughts_to_skip.append(lean_thought_for_processing)
 
     return {
         "thoughts_to_classify": thoughts_to_classify,
@@ -229,18 +226,20 @@ def collect_thoughts_for_classification(limit=1000):
     }
 
 
-def main(limit=1000):
-    # TODO: LATER: Clean up this function from all this job mgmt logic
+def main(single_collection_find_limit=1000):
+    # Setup/init
     job_id = utils.create_job()
 
-    classification_candidates = collect_thoughts_for_classification(limit)
+    # Collate thoughts
+    classification_candidates = collect_thoughts_for_classification(
+        single_collection_find_limit
+    )
     thoughts_classified: List[ObjectId] = []
     all_incomplete_summaries = []
     all_rejected_topics = {}
 
+    # Summarize + classify each thought
     for thought in classification_candidates["thoughts_to_classify"]:
-        now = utils.get_now()
-
         generated_summary = generate_summary(thought["content"], thought["title"])
         if summary_seems_incomplete(generated_summary):
             all_incomplete_summaries.append(
@@ -253,14 +252,16 @@ def main(limit=1000):
 
         generated_topics = generate_topics(generated_summary, thought["title"])
 
-        # compile all rejected topics for later analysis. Don't need to include
-        # reference to the original thought, because we'll write both accepted and rejected topics
-        # to the thought in the final write operation (see below)
+        # Here we compile all rejected topics for later analysis. We don't need to include
+        # reference to the original thought, because the thought itself will contain its own list of
+        # accepted and rejected topics.
         for topic in generated_topics["rejected_topics"]:
             if hasattr(all_rejected_topics, topic):
                 all_rejected_topics[topic] += 1
             else:
                 all_rejected_topics[topic] = 1
+
+        now = utils.get_now()
 
         workflows_completed = [
             {
@@ -275,7 +276,7 @@ def main(limit=1000):
             },
         ]
 
-        update_op = thoughts_db["test_topic_classification"].update_one(
+        update_op = thoughts_db[thought["collection"]].update_one(
             {"_id": thought["_id"]},
             {
                 "$set": {
@@ -305,27 +306,21 @@ def main(limit=1000):
             "thoughts_updated_count": len(thoughts_classified),
             "job_metadata": {
                 "incomplete_summaries": all_incomplete_summaries,
+                "incomplete_summaries_count": len(all_incomplete_summaries),
                 "rejected_topics": all_rejected_topics,
             },
         },
     )
 
-    return dict(
-        {
-            "quantity_thoughts_modified": len(thoughts_classified),
-        }
-    )
+    return {
+        "quantity_thoughts_classified": len(thoughts_classified),
+    }
 
 
 if __name__ == "__main__":
     tic = time.perf_counter()
-    x = main(limit=10)
+    x = main(single_collection_find_limit=5)
     # x = main()
     toc = time.perf_counter()
     pprint(x)
     print(f"Time elapsed: {toc-tic:0.4f}")
-
-# TODO: add back db -> collection for loop
-# TODO: add back if_thought_should_be_classified filter
-# TODO: clean up
-# TODO: collect the "omitted topics" to later analyze for good additions to our topics list!

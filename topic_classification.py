@@ -15,7 +15,6 @@ from anthropic import (
 )
 
 from langchain.document_loaders import YoutubeLoader
-import youtube_transcript_api
 from pprint import pprint
 
 # TODO: LATER: fetch topics from db so this is always up-to-date
@@ -232,12 +231,14 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
 def main(single_collection_find_limit=1000):
     # Setup/init
     job_id = utils.create_job()
+    classification_candidates = {}
     thoughts_classified: List[ObjectId] = []
     all_incomplete_summaries = []
     all_rejected_topics = {}
+    workflows_completed = []
     errors = []
 
-    # Collate thoughts
+    # Collect thoughts
     classification_candidates = collect_thoughts_for_classification(
         single_collection_find_limit
     )

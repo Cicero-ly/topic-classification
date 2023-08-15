@@ -305,12 +305,13 @@ def main(single_collection_find_limit=1000):
             "status": "complete",
             "last_updated": utils.get_now(),
             "workflows_completed": workflows_completed,
-            "thoughts_updated": thoughts_classified,
-            "thoughts_updated_count": len(thoughts_classified),
             "job_metadata": {
+                "thoughts_updated": thoughts_classified,
+                "thoughts_updated_count": len(thoughts_classified),
                 "incomplete_summaries": all_incomplete_summaries,
                 "incomplete_summaries_count": len(all_incomplete_summaries),
                 "rejected_topics": all_rejected_topics,
+                "errors": errors,
             },
         },
     )

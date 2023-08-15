@@ -103,7 +103,6 @@ def generate_topics(content: str, title: str):
         if stripped_topic in master_topics:
             parsed_topics.append(stripped_topic)
         else:
-            print("Rejected this topic: ", stripped_topic)
             rejected_topics.append(stripped_topic)
     return {"accepted_topics": parsed_topics, "rejected_topics": rejected_topics}
 

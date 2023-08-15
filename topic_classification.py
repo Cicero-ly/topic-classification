@@ -199,9 +199,11 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                         if documents_modified == 0:
                             # TODO: LATER: throw some warning about "transcript not saved"
                             pass
-                except youtube_transcript_api._errors.NoTranscriptFound:
-                    print(f"No transcript found for youtube video {thought['url']}")
-                    continue
+                except Exception:
+                    # TODO: save any failed transcripts in job metadata
+                    print(
+                        f"Error getting transcript for Youtube video at {thought['url']}"
+                    )
             elif thought.get("content_text") != None:
                 parsed_content = thought["content_text"]
             else:

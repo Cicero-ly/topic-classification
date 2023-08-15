@@ -109,8 +109,8 @@ def generate_topics(content: str, title: str):
 
 
 def summary_seems_incomplete(summary: str):
-    regExp = r"[^.?]$"  # A regular expression that matches for end-of-strings which do NOT end in a period or question mark.
-    if re.search(regExp, summary):
+    terminated_sentence_pattern = r"[.?]{1,3}[\"\']?$"
+    if not re.search(terminated_sentence_pattern, summary):
         return True
     return False
 
@@ -150,7 +150,7 @@ def store_transcript(thought_pointer, transcript):
 
 def collect_thoughts_for_classification(single_collection_find_limit=1000):
     active_thought_collections = os.environ["ACTIVE_THOUGHT_COLLECTIONS"].split(",")
-    print("active thought collections: ", active_thought_collections)
+    print("Active thought collections: ", active_thought_collections)
     thoughts_to_classify = []
     thoughts_to_skip = []
 

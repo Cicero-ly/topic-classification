@@ -17,26 +17,12 @@ from pprint import pprint
 # TODO: fetch topics from db so this is always up-to-date
 from constants import topics as master_topics
 
-# TODO: openai.error.ServiceUnavailableError: The server is overloaded or not ready yet.
-# Need a simple for loop retry for any openai requests to handle the above
 
 anthropic = Anthropic()
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
 
 def generate_summary(content: str, title: str):
-    # MODIFIED PROMPT
-    # human_prompt = f"""
-    #     Write a short summary of the following article, and make sure to keep important names. Keep it professional and concise.
-    #     I only want you to return the summary itself, as if it would be published on Wikipedia. Let's assume that your initial response is perfect, and that it doesn't need to be modified in any way.
-    #     Most importantly, please make sure finish your thoughts. Do not leave any sentences or thoughts incomplete!
-    #     Feel free to make your response shorter if you feel like you cannot capture the entire summary in the number of words you are allowed to provide.
-
-    #     Article title: {title}
-    #     Article content: {content}
-    # """
-
-    # ORIGINAL PROMPT
     human_prompt = f"""
         Write a 50-300 word summary of the following article, make sure to keep important names. 
         Keep it professional and concise.
@@ -45,7 +31,6 @@ def generate_summary(content: str, title: str):
         article content: {content}
     """
 
-    # response = call_chat_model(claude, chat_messages)
     retries = 5
     for i in range(retries):
         try:
@@ -190,6 +175,7 @@ def topic_classification(limit=1000):
                 loader = YoutubeLoader.from_youtube_url(thought.get("url"))
                 transcript = loader.load()
                 content = transcript
+                # TODO: store transcript
             except youtube_transcript_api._errors.NoTranscriptFound:
                 print(f"No transcript found for youtube video {thought['url']}")
                 continue
@@ -198,16 +184,16 @@ def topic_classification(limit=1000):
         else:
             continue
 
-        # if thought_should_be_processed(content, title):
-        thoughts_to_classify.append(
-            {
-                # "collection": collection,
-                # "collection": thought["collection"],
-                "_id": thought["_id"],
-                "title": thought["title"],
-                "content": content,
-            }
-        )
+        if thought_should_be_processed(content, thought["title"]):
+            thoughts_to_classify.append(
+                {
+                    # "collection": collection,
+                    # "collection": thought["collection"],
+                    "_id": thought["_id"],
+                    "title": thought["title"],
+                    "content": content,
+                }
+            )
 
     print("thoughts_to_classify length:", len(thoughts_to_classify))
 
@@ -229,7 +215,7 @@ def topic_classification(limit=1000):
                     "llm_generated_summary": final_generated_summary,
                     "llm_generated_topics": generated_topics,
                     "llm_processing_metadata": {
-                        "workflows_performed": [
+                        "workflows_completed": [
                             {
                                 "name": "summarization",
                                 "model": "claude-instant-v1-100k",
@@ -261,13 +247,18 @@ def topic_classification(limit=1000):
                 }
             )
 
-    return thoughts_classified
+    return dict(
+        {
+            # "thoughts_classified": thoughts_classified,
+            "quantity_thoughts_classified": len(thoughts_classified),
+        }
+    )
 
 
 if __name__ == "__main__":
     tic = time.perf_counter()
-    x = topic_classification(limit=100)
-    # x = topic_classification()
+    # x = topic_classification(limit=5)
+    x = topic_classification()
     toc = time.perf_counter()
     pprint(x)
     print(f"Time elapsed: {toc-tic:0.4f}")

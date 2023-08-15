@@ -294,7 +294,9 @@ def main(single_collection_find_limit=1000):
         )
 
         if update_op.modified_count == 1:
-            thoughts_classified.append(thought["_id"])
+            thoughts_classified.append(
+                {"collection": thought["collection"], "_id": thought["_id"]}
+            )
 
     utils.update_job(
         job_id,

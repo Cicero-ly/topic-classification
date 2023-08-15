@@ -1,3 +1,4 @@
+import sys
 import re
 import time
 import os
@@ -320,9 +321,18 @@ def main(single_collection_find_limit=1000):
 
 
 if __name__ == "__main__":
-    tic = time.perf_counter()
-    x = main(single_collection_find_limit=5)
-    # x = main()
-    toc = time.perf_counter()
-    pprint(x)
-    print(f"Time elapsed: {toc-tic:0.4f}")
+    try:
+        tic = time.perf_counter()
+        single_collection_find_limit = int(sys.argv[1])
+        print(
+            "Limit for querying each collection has been set to: ",
+            single_collection_find_limit,
+        )
+        x = main(single_collection_find_limit=single_collection_find_limit)
+        toc = time.perf_counter()
+        pprint(x)
+        print(f"Time elapsed: {toc-tic:0.4f}")
+    except IndexError:
+        raise SystemExit(
+            f"Missing required positional argument. Usage: {sys.argv[0]} <integer_that_limits_per-collection_find operation>"
+        )

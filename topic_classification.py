@@ -262,7 +262,7 @@ def main(single_collection_find_limit=1000):
             # reference to the original thought, because the thought itself will contain its own list of
             # accepted and rejected topics.
             for topic in generated_topics["rejected_topics"]:
-                if hasattr(all_rejected_topics, topic):
+                if all_rejected_topics.get(topic) is not None:
                     all_rejected_topics[topic] += 1
                 else:
                     all_rejected_topics[topic] = 1

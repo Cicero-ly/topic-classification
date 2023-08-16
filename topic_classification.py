@@ -3,6 +3,7 @@ import re
 import time
 import os
 from typing import List
+import pymongo
 from data_stores.mongodb import thoughts_db
 from bson.objectid import ObjectId
 import utils
@@ -183,7 +184,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 "voicesInContent": 1,
             },
             limit=single_collection_find_limit,
-            sort={"_id": -1},
+            sort=[("_id", pymongo.DESCENDING)],
         ):
             parsed_content = ""
             # TODO: Refactor this out

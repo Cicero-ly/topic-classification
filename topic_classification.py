@@ -183,6 +183,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 "voicesInContent": 1,
             },
             limit=single_collection_find_limit,
+            sort={"_id": -1},
         ):
             parsed_content = ""
             # TODO: Refactor this out

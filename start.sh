@@ -1,3 +1,4 @@
+#!/bin/sh
 echo "===================  Topic classification starting... ======================="
 echo ""
 cd /usr/src/app

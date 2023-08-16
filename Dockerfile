@@ -6,4 +6,6 @@ COPY requirements.txt ./
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD [ "sh", "start.sh" ]
+COPY . .
+
+CMD [ ".", "./start.sh" ]

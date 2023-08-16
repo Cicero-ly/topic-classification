@@ -15,6 +15,11 @@ from anthropic import (
 )
 
 from langchain.document_loaders import YoutubeLoader
+from youtube_transcript_api._errors import (
+    NoTranscriptAvailable,
+    NoTranscriptFound,
+    CouldNotRetrieveTranscript,
+)
 from pprint import pprint
 
 # TODO: LATER: fetch topics from db so this is always up-to-date
@@ -198,11 +203,20 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                         if documents_modified == 0:
                             # TODO: LATER: throw some warning about "transcript not saved"
                             pass
-                except Exception:
+                except (
+                    NoTranscriptFound
+                    or NoTranscriptAvailable
+                    or CouldNotRetrieveTranscript
+                ):
+                    print(
+                        f"Error getting transcript for Youtube video at {thought['url']} due to NoTranscriptFound, NoTranscriptAvaialble, or CouldNotRetrieveTranscript."
+                    )
+                except Exception as e:
                     # TODO: save any failed transcripts in job metadata
                     print(
-                        f"Error getting transcript for Youtube video at {thought['url']}"
+                        f"Misc. error getting transcript for Youtube video at {thought['url']}—see below:"
                     )
+                    print(e)
             elif thought.get("content_text") != None:
                 parsed_content = thought["content_text"]
             else:

@@ -69,7 +69,7 @@ def generate_topics(content: str, title: str):
         Here are some notes regarding topics which are identical but might be called different names: 
         - If you choose "Mathematics" as a topic, please just call it "Math".
         - If you choose "Health" as a topic, please call it "Medicine or Health."
-        - If you choose "Film" as a topic, please just call it "Culture".
+        - If you choose "Film", "Music", or "Art" as a topic, please just call it "Culture".
 
         Article title: {title}
         Article summary: {content}

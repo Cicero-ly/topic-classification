@@ -287,12 +287,12 @@ def main(single_collection_find_limit=1000):
                 {
                     "$set": {
                         "llm_generated_summary": generated_summary,
-                        "llm_generated_topics": generated_topics,  # This includes both accepted and rejected topics.
+                        "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and rejected topics.
                         "llm_processing_metadata": {
                             "workflows_completed": workflows_completed,
                             "fields_written": [
                                 "llm_generated_summary",
-                                "llm_generated_topics",
+                                "llm_generated_legacy_topics",
                             ],
                         },
                     }

@@ -364,7 +364,7 @@ if __name__ == "__main__":
         single_collection_find_limit = 100
     else:
         # A small `n` for operational testing/container testing.
-        single_collection_find_limit = 20
+        single_collection_find_limit = 3
     print(
         "Limit for querying each collection has been set to: ",
         single_collection_find_limit,

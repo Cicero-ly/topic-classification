@@ -155,8 +155,8 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 "reviewed": True,
                 "voicesInContent": {"$exists": True},
                 "title": {"$exists": True},
-                "llm_generated_topics": None,
                 "url": {"$exists": True},
+                "llm_generated_legacy_topics": {"$exists": False},
                 "$or": [
                     # If it's an article, it will have "content_text". If it's a youtube video, it will have "vid".
                     {"content_text": {"$exists": True}},

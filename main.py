@@ -318,7 +318,6 @@ def main(single_collection_find_limit=10000):
             {"_id": thought["_id"]},
             {"$set": {"flags.avoid_topic_classification": True}},
         )
-        pass
 
     # Finish up, log the job
     utils.update_job(

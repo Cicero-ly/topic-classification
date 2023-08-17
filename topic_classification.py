@@ -158,6 +158,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
     print("Active thought collections: ", active_thought_collections)
     thoughts_to_classify = []
     thoughts_to_skip = []
+    errors = []
 
     for collection in active_thought_collections:
         for thought in thoughts_db[collection].find(
@@ -188,7 +189,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
             sort=[("_id", pymongo.DESCENDING)],
         ):
             parsed_content = ""
-            # TODO: Refactor this out
+            # TODO: LATER: Refactor this out
             if thought.get("vid") != None:
                 try:
                     loader = YoutubeLoader.from_youtube_url(thought.get("url"))
@@ -196,30 +197,29 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                     if len(document_list) > 0:
                         transcript = document_list[0].page_content
                         parsed_content = transcript
-                        documents_modified = store_transcript(
+                        store_transcript(
                             {
                                 "collection": collection,
                                 "_id": thought["_id"],
                             },
                             transcript,
                         )
-                        if documents_modified == 0:
-                            # TODO: LATER: throw some warning about "transcript not saved"
-                            pass
                 except (
                     NoTranscriptFound
                     or NoTranscriptAvailable
                     or CouldNotRetrieveTranscript
                 ):
-                    print(
-                        f"Error getting transcript for Youtube video at {thought['url']} due to NoTranscriptFound, NoTranscriptAvaialble, or CouldNotRetrieveTranscript."
-                    )
+                    # Handling these exceptions separately, because the error message
+                    # is egregiously long (contains information about all the languages that
+                    # are and aren't available)
+                    transcript_not_found_error = f"Error getting transcript for Youtube video at {thought['url']} due to NoTranscriptFound, NoTranscriptAvaialble, or CouldNotRetrieveTranscript."
+                    errors.append(transcript_not_found_error)
                 except Exception as e:
-                    # TODO: save any failed transcripts in job metadata
                     print(
                         f"Misc. error getting transcript for Youtube video at {thought['url']}—see below:"
                     )
                     print(e)
+                    errors.append(str(e))
             elif thought.get("content_text") != None:
                 parsed_content = thought["content_text"]
             else:
@@ -242,26 +242,29 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
         "thoughts_to_classify_count": len(thoughts_to_classify),
         "thoughts_to_skip": thoughts_to_skip,
         "thoughts_to_skip_count": len(thoughts_to_skip),
+        "errors": errors,
     }
 
 
 def main(single_collection_find_limit=10000):
     # Setup/init
     job_id = utils.create_job()
-    classification_candidates = {}
+    collected_thought_data = {}
     thoughts_classified: List[ObjectId] = []
     all_incomplete_summaries = []
     all_rejected_topics = {}
     workflows_completed = []
-    errors = []
+    data_collection_errors = []
+    ai_processing_errors = []
 
     # Collect thoughts
-    classification_candidates = collect_thoughts_for_classification(
+    collected_thought_data = collect_thoughts_for_classification(
         single_collection_find_limit
     )
+    data_collection_errors.extend(collected_thought_data["errors"])
 
     # Summarize + classify each thought
-    for thought in classification_candidates["thoughts_to_classify"]:
+    for thought in collected_thought_data["thoughts_to_classify"]:
         try:
             generated_summary = generate_summary(thought["content"], thought["title"])
             if summary_seems_incomplete(generated_summary):
@@ -321,7 +324,7 @@ def main(single_collection_find_limit=10000):
                     {"collection": thought["collection"], "_id": thought["_id"]}
                 )
         except Exception as e:
-            errors.append(str(e))
+            ai_processing_errors.append(str(e))
             print(e)
 
     # Finish up, log the job
@@ -337,7 +340,10 @@ def main(single_collection_find_limit=10000):
                 "incomplete_summaries": all_incomplete_summaries,
                 "incomplete_summaries_count": len(all_incomplete_summaries),
                 "rejected_topics": all_rejected_topics,
-                "errors": errors,
+                "errors": {
+                    "data_collection_errors": data_collection_errors,
+                    "ai_processing_errors": ai_processing_errors,
+                },
             },
         },
     )

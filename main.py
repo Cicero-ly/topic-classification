@@ -1,31 +1,25 @@
-import sys
-import re
-import time
 import os
+import time
+from pprint import pprint
 from typing import List
-import pymongo
-from data_stores.mongodb import thoughts_db
-from bson.objectid import ObjectId
-import utils
-import openai
-from anthropic import (
-    Anthropic,
-    HUMAN_PROMPT,
-    AI_PROMPT,
-    APIStatusError as AnthropicAPIStatusError,
-)
 
+import openai
+import pymongo
+from anthropic import AI_PROMPT, HUMAN_PROMPT, Anthropic
+from anthropic import APIStatusError as AnthropicAPIStatusError
+from bson.objectid import ObjectId
 from langchain.document_loaders import YoutubeLoader
 from youtube_transcript_api._errors import (
+    CouldNotRetrieveTranscript,
     NoTranscriptAvailable,
     NoTranscriptFound,
-    CouldNotRetrieveTranscript,
 )
-from pprint import pprint
+
+import utils
 
 # TODO: LATER: fetch topics from db so this is always up-to-date
 from constants import topics as master_topics
-
+from data_stores.mongodb import thoughts_db
 
 anthropic = Anthropic()
 openai.api_key = os.environ["OPENAI_API_KEY"]

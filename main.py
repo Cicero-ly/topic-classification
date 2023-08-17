@@ -236,6 +236,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 )
 
     return {
+        "active_thought_collections": active_thought_collections,
         "thoughts_to_classify": thoughts_to_classify,
         "thoughts_to_classify_count": len(thoughts_to_classify),
         "thoughts_to_skip": thoughts_to_skip,
@@ -313,8 +314,15 @@ def main(single_collection_find_limit=10000):
                 workflows["topic_classification"],
             ],
             "job_metadata": {
+                "collections_queried": collected_thought_data[
+                    "active_thought_collections"
+                ],
                 "thoughts_updated": thoughts_classified,
                 "thoughts_updated_count": len(thoughts_classified),
+                "thoughts_skipped": collected_thought_data["thoughts_to_skip"],
+                "thoughts_skipped_count": collected_thought_data[
+                    "thoughts_to_skip_count"
+                ],
                 "rejected_topics": all_rejected_topics,
                 "errors": {
                     "data_collection_errors": data_collection_errors,

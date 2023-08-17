@@ -245,33 +245,31 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                     }
                 )
 
-    return {
-        "active_thought_collections": active_thought_collections,
-        "thoughts_to_classify": thoughts_to_classify,
-        "thoughts_to_classify_count": len(thoughts_to_classify),
-        "thoughts_to_skip": thoughts_to_skip,
-        "thoughts_to_skip_count": len(thoughts_to_skip),
-        "errors": errors,
-    }
+    return (
+        active_thought_collections,
+        thoughts_to_classify,
+        thoughts_to_skip,
+        errors,
+    )
 
 
 def main(single_collection_find_limit=10000):
     # Setup/init
     job_id = utils.create_job()
-    collected_thought_data = {}
-    thoughts_classified: List[ObjectId] = []
     all_rejected_topics = {}
-    data_collection_errors = []
+    thoughts_classified: List[ObjectId] = []
     ai_processing_errors = []
 
     # Collect thoughts
-    collected_thought_data = collect_thoughts_for_classification(
-        single_collection_find_limit
-    )
-    data_collection_errors.extend(collected_thought_data["errors"])
+    (
+        active_thought_collections,
+        thoughts_to_classify,
+        thoughts_to_skip,
+        data_collection_errors,
+    ) = collect_thoughts_for_classification(single_collection_find_limit)
 
     # Summarize + classify each thought
-    for thought in collected_thought_data["thoughts_to_classify"]:
+    for thought in thoughts_to_classify:
         try:
             generated_summary = generate_summary(thought["content"], thought["title"])
             generated_topics = generate_topics(generated_summary, thought["title"])
@@ -313,7 +311,7 @@ def main(single_collection_find_limit=10000):
             ai_processing_errors.append(str(e))
             print(e)
 
-    for thought in collected_thought_data["thoughts_to_skip"]:
+    for thought in thoughts_to_skip:
         update_op = thoughts_db[thought["collection"]].update_one(
             {"_id": thought["_id"]},
             {"$set": {"flags.avoid_topic_classification": True}},
@@ -330,15 +328,11 @@ def main(single_collection_find_limit=10000):
                 workflows["topic_classification"],
             ],
             "job_metadata": {
-                "collections_queried": collected_thought_data[
-                    "active_thought_collections"
-                ],
+                "collections_queried": active_thought_collections,
                 "thoughts_updated": thoughts_classified,
                 "thoughts_updated_count": len(thoughts_classified),
-                "thoughts_skipped": collected_thought_data["thoughts_to_skip"],
-                "thoughts_skipped_count": collected_thought_data[
-                    "thoughts_to_skip_count"
-                ],
+                "thoughts_skipped": thoughts_to_skip,
+                "thoughts_skipped_count": len(thoughts_to_skip),
                 "rejected_topics": all_rejected_topics,
                 "errors": {
                     "data_collection_errors": data_collection_errors,

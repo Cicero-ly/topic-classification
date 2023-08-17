@@ -109,7 +109,6 @@ def generate_topics(content: str, title: str):
 
 
 # TODO: LATER: something more robust down the road...possibly tapping into our existing rules db collection
-# TODO: LATER: Add "reasons" so we can see in job_metadata why a thought was skipped
 def filter_bad_candidates_for_classification(
     thought, parsed_content
 ) -> Tuple[bool, str]:

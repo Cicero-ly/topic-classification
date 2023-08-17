@@ -4,6 +4,6 @@ echo ""
 cd /usr/src/app
 # local testing only:
 # . .venv/bin/activate
-python3 topic_classification.py
+python3 main.py
 echo ""
 echo "===================  Topic classification complete. ========================="

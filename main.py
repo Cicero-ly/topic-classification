@@ -109,11 +109,14 @@ def generate_topics(content: str, title: str):
 
 
 # TODO: LATER: something more robust down the road...possibly tapping into our existing rules db collection
+# Farzad said that "this will need to be greatly expanded, and in short order"
 def filter_bad_candidates_for_classification(
     thought, parsed_content
 ) -> Tuple[bool, str]:
     """
     Determine if thought should undergo topic classification according to simple filter rules.
+    If a thought does not pass the filter, it will also be flagged in the DB to ensure
+    it isn't considered again for future processing.
     """
     if "assorted links" in thought["title"]:
         reason = "Ignore Tyler Cowen's 'assorted links'"
@@ -154,6 +157,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
     for collection in active_thought_collections:
         for thought in thoughts_db[collection].find(
             {
+                "flags.avoid_topic_classification": {"$ne": True},
                 "valuable": True,
                 "reviewed": True,
                 "voicesInContent": {"$exists": True},
@@ -308,6 +312,13 @@ def main(single_collection_find_limit=10000):
         except Exception as e:
             ai_processing_errors.append(str(e))
             print(e)
+
+    for thought in collected_thought_data["thoughts_to_skip"]:
+        update_op = thoughts_db[thought["collection"]].update_one(
+            {"_id": thought["_id"]},
+            {"$set": {"flags.avoid_topic_classification": True}},
+        )
+        pass
 
     # Finish up, log the job
     utils.update_job(

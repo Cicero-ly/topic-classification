@@ -19,6 +19,7 @@ import utils
 
 # TODO: LATER: fetch topics from db so this is always up-to-date
 from constants import topics as master_topics
+from constants import workflows
 from data_stores.mongodb import thoughts_db
 
 anthropic = Anthropic()
@@ -243,7 +244,6 @@ def main(single_collection_find_limit=10000):
     collected_thought_data = {}
     thoughts_classified: List[ObjectId] = []
     all_rejected_topics = {}
-    workflows_completed = []
     data_collection_errors = []
     ai_processing_errors = []
 
@@ -268,21 +268,6 @@ def main(single_collection_find_limit=10000):
                 else:
                     all_rejected_topics[topic] = 1
 
-            now = utils.get_now()
-
-            workflows_completed = [
-                {
-                    "name": "summarization",
-                    "model": "claude-instant-v1-100k",
-                    "last_performed": now,
-                },
-                {
-                    "name": "topic_classification",
-                    "model": "chatgpt-3.5-turbo",
-                    "last_performed": now,
-                },
-            ]
-
             update_op = thoughts_db[thought["collection"]].update_one(
                 {"_id": thought["_id"]},
                 {
@@ -290,10 +275,13 @@ def main(single_collection_find_limit=10000):
                         "llm_generated_summary": generated_summary,
                         "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and rejected topics.
                         "llm_processing_metadata": {
-                            "workflows_completed": workflows_completed,
+                            "workflows_completed": [
+                                workflows["summarization"],
+                                workflows["topic_classification"],
+                            ],
                             "fields_written": [
-                                "llm_generated_summary",
-                                "llm_generated_legacy_topics",
+                                workflows["summarization"]["fields_written"],
+                                workflows["topic_classification"]["fields_written"],
                             ],
                         },
                     }
@@ -314,7 +302,10 @@ def main(single_collection_find_limit=10000):
         {
             "status": "complete",
             "last_updated": utils.get_now(),
-            "workflows_completed": workflows_completed,
+            "workflows_completed": [
+                workflows["summarization"],
+                workflows["topic_classification"],
+            ],
             "job_metadata": {
                 "thoughts_updated": thoughts_classified,
                 "thoughts_updated_count": len(thoughts_classified),

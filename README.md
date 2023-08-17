@@ -8,6 +8,11 @@ Topic classification is performed in two steps:
 1. **Summarization** (using Anthropic's Claude, due to its 100k token context window)
 2. **Generating topics** based on step 1's generated summary, using ChatGPT 3.5 Turbo
 
+## Running locally (Docker)
+### Build the image and run the container
+1. `docker build -t cicero_topic_classification .`
+2. `docker run --env-file .env cicero_topic_classification` (Get the .env from a teammate)
+
 ## Environment variables
 
 - `PYTHON_ENV` {string}: "production", "development", "data_analysis". See main.py's `main()` to see the difference (it's essentially a lever for the size of the input dataset, and can obviously act as a lever for anything else down the road.)

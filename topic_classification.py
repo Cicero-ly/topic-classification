@@ -113,13 +113,6 @@ def generate_topics(content: str, title: str):
     return {"accepted_topics": parsed_topics, "rejected_topics": rejected_topics}
 
 
-def summary_seems_incomplete(summary: str):
-    terminated_sentence_pattern = r"[.?!][\"\']?$"
-    if not re.search(terminated_sentence_pattern, summary):
-        return True
-    return False
-
-
 # TODO: LATER: something more robust down the road...possibly tapping into our existing rules db collection
 def thought_should_be_processed(thought, parsed_content):
     """
@@ -251,7 +244,6 @@ def main(single_collection_find_limit=10000):
     job_id = utils.create_job()
     collected_thought_data = {}
     thoughts_classified: List[ObjectId] = []
-    all_incomplete_summaries = []
     all_rejected_topics = {}
     workflows_completed = []
     data_collection_errors = []
@@ -267,15 +259,6 @@ def main(single_collection_find_limit=10000):
     for thought in collected_thought_data["thoughts_to_classify"]:
         try:
             generated_summary = generate_summary(thought["content"], thought["title"])
-            if summary_seems_incomplete(generated_summary):
-                all_incomplete_summaries.append(
-                    {
-                        "_id": thought["_id"],
-                        "title": thought["title"],
-                        "generated_summary": generated_summary,
-                    }
-                )
-
             generated_topics = generate_topics(generated_summary, thought["title"])
 
             # Here we compile all rejected topics for later analysis. We don't need to include
@@ -337,8 +320,6 @@ def main(single_collection_find_limit=10000):
             "job_metadata": {
                 "thoughts_updated": thoughts_classified,
                 "thoughts_updated_count": len(thoughts_classified),
-                "incomplete_summaries": all_incomplete_summaries,
-                "incomplete_summaries_count": len(all_incomplete_summaries),
                 "rejected_topics": all_rejected_topics,
                 "errors": {
                     "data_collection_errors": data_collection_errors,

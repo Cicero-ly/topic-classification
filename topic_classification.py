@@ -181,6 +181,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 "title": 1,
                 "content_text": 1,
                 # Used for filtering out certain voices to prevent classification
+                # in thought_should_be_processed()
                 "voicesInContent": 1,
             },
             limit=single_collection_find_limit,
@@ -244,7 +245,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
     }
 
 
-def main(single_collection_find_limit=1000):
+def main(single_collection_find_limit=10000):
     # Setup/init
     job_id = utils.create_job()
     classification_candidates = {}
@@ -347,18 +348,24 @@ def main(single_collection_find_limit=1000):
 
 
 if __name__ == "__main__":
-    try:
-        tic = time.perf_counter()
-        single_collection_find_limit = int(sys.argv[1])
-        print(
-            "Limit for querying each collection has been set to: ",
-            single_collection_find_limit,
-        )
-        x = main(single_collection_find_limit=single_collection_find_limit)
-        toc = time.perf_counter()
-        pprint(x)
-        print(f"Time elapsed: {toc-tic:0.4f}")
-    except IndexError:
-        raise SystemExit(
-            f"Missing required positional argument. Usage: {sys.argv[0]} <integer_that_limits_per-collection_find operation>"
-        )
+    tic = time.perf_counter()
+
+    python_env = os.environ.get("PYTHON_ENV", "development")
+    if python_env == "production":
+        single_collection_find_limit = os.environ["SINGLE_COLLECTION_FIND_LIMIT"]
+    elif python_env == "data_analysis":
+        # A larger `n` for testing AI performance and performing more substantive data analysis.
+        single_collection_find_limit = 100
+    else:
+        # A small `n` for operational testing/container testing.
+        single_collection_find_limit = 20
+    print(
+        "Limit for querying each collection has been set to: ",
+        single_collection_find_limit,
+    )
+    x = main(single_collection_find_limit=single_collection_find_limit)
+
+    toc = time.perf_counter()
+
+    pprint(x)
+    print(f"Time elapsed: {toc-tic:0.4f}")

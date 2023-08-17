@@ -158,6 +158,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
             {
                 "valuable": True,
                 "reviewed": True,
+                "voicesInContent": {"$exists": True},
                 "title": {"$exists": True},
                 "llm_generated_topics": None,
                 "url": {"$exists": True},

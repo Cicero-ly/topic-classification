@@ -1,7 +1,7 @@
 import os
 import time
 from pprint import pprint
-from typing import List
+from typing import List, Tuple
 
 import openai
 import pymongo
@@ -109,25 +109,29 @@ def generate_topics(content: str, title: str):
 
 
 # TODO: LATER: something more robust down the road...possibly tapping into our existing rules db collection
-def thought_should_be_processed(thought, parsed_content):
+# TODO: LATER: Add "reasons" so we can see in job_metadata why a thought was skipped
+def filter_bad_candidates_for_classification(
+    thought, parsed_content
+) -> Tuple[bool, str]:
     """
-    Determine if thought should be processed according to simple filter rules.
+    Determine if thought should undergo topic classification according to simple filter rules.
     """
-    # Tyler Cowen
     if "assorted links" in thought["title"]:
-        return False
+        reason = "Ignore Tyler Cowen's 'assorted links'"
+        return (False, reason)
     if "appeared first on Marginal REVOLUTION" in parsed_content[-250:]:
-        return False
-    # Content too short
+        reason = "Ignore short or truncated Tyler Cowen content"
+        return (False, reason)
     if len(parsed_content) < 450:
-        return False
-    # Content is already truncated
+        reason = "Ignore content if character count < 450"
+        return (False, reason)
     if "read more" in parsed_content[-250:]:
-        return False
-    # Ignore content from voice "Public"
+        reason = "Ignore truncated content"
+        return (False, reason)
     if ObjectId("64505e4c509cac9a8e7e226d") in thought["voicesInContent"]:
-        return False
-    return True
+        reason = "Ignore content from the voice 'Public'"
+        return (False, reason)
+    return (True, "")
 
 
 def store_transcript(thought_pointer, transcript):
@@ -171,7 +175,6 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 "title": 1,
                 "content_text": 1,
                 # Used for filtering out certain voices to prevent classification
-                # in thought_should_be_processed()
                 "voicesInContent": 1,
             },
             limit=single_collection_find_limit,
@@ -217,8 +220,11 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
             else:
                 continue
 
-            # Return only the fields necessary for performing summarization/topic classification.
-            if thought_should_be_processed(thought, parsed_content):
+            (
+                thought_should_be_processed,
+                skipped_reason,
+            ) = filter_bad_candidates_for_classification(thought, parsed_content)
+            if thought_should_be_processed:
                 thoughts_to_classify.append(
                     {
                         "collection": collection,
@@ -232,6 +238,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                     {
                         "collection": collection,
                         "_id": thought["_id"],
+                        "reason": skipped_reason,
                     }
                 )
 

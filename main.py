@@ -218,16 +218,22 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 continue
 
             # Return only the fields necessary for performing summarization/topic classification.
-            lean_thought_for_processing = {
-                "collection": collection,
-                "_id": thought["_id"],
-                "content": parsed_content,
-                "title": thought["title"],
-            }
             if thought_should_be_processed(thought, parsed_content):
-                thoughts_to_classify.append(lean_thought_for_processing)
+                thoughts_to_classify.append(
+                    {
+                        "collection": collection,
+                        "_id": thought["_id"],
+                        "content": parsed_content,
+                        "title": thought["title"],
+                    }
+                )
             else:
-                thoughts_to_skip.append(lean_thought_for_processing)
+                thoughts_to_skip.append(
+                    {
+                        "collection": collection,
+                        "_id": thought["_id"],
+                    }
+                )
 
     return {
         "thoughts_to_classify": thoughts_to_classify,

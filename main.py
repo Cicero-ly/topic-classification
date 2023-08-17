@@ -180,6 +180,9 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
             # TODO: LATER: Refactor this out
             if thought.get("vid") != None:
                 try:
+                    # Right now, we are fetching fresh transcripts even if a youtube thought
+                    # already has a transcript in `content_transcript`, since it was alluded to
+                    # previously that those were quite poor
                     loader = YoutubeLoader.from_youtube_url(thought.get("url"))
                     document_list = loader.load()
                     if len(document_list) > 0:

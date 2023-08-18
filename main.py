@@ -18,8 +18,7 @@ from youtube_transcript_api._errors import (
 import utils
 
 # TODO: LATER: fetch topics from db so this is always up-to-date
-from constants import topics as master_topics
-from constants import workflows
+import constants
 from data_stores.mongodb import thoughts_db
 
 anthropic = Anthropic()
@@ -63,7 +62,7 @@ def generate_topics(content: str, title: str):
         - TOPIC_2
         - TOPIC_3
 
-        Do not add a topic that isn't in this list of topics: {master_topics}
+        Do not add a topic that isn't in this list of topics: {constants.topics}
         Feel free to use less than three topics if you can't find three topics from the list that are a good fit.
         If you pick a topic that is two words or more, make sure every word is capitalized (not just the first word).
 
@@ -101,7 +100,7 @@ def generate_topics(content: str, title: str):
     rejected_topics = []
     for topic in response.content.split("\n"):
         stripped_topic = topic.replace("-", "").strip()
-        if stripped_topic in master_topics:
+        if stripped_topic in constants.topics:
             parsed_topics.append(stripped_topic)
         else:
             rejected_topics.append(stripped_topic)
@@ -287,17 +286,16 @@ def main(single_collection_find_limit=10000):
                 {"_id": thought["_id"]},
                 {
                     "$set": {
+                        # TODO: LATER: have these keys reference the constants.fields_written const so these
+                        # names are more centralized
                         "llm_generated_summary": generated_summary,
                         "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and rejected topics.
                         "llm_processing_metadata": {
                             "workflows_completed": [
-                                workflows["summarization"],
-                                workflows["topic_classification"],
+                                constants.workflows["summarization"],
+                                constants.workflows["topic_classification"],
                             ],
-                            "fields_written": [
-                                workflows["summarization"]["fields_written"],
-                                workflows["topic_classification"]["fields_written"],
-                            ],
+                            "fields_written": constants.fields_written,
                         },
                     }
                 },
@@ -324,8 +322,8 @@ def main(single_collection_find_limit=10000):
             "status": "complete",
             "last_updated": utils.get_now(),
             "workflows_completed": [
-                workflows["summarization"],
-                workflows["topic_classification"],
+                constants.workflows["summarization"],
+                constants.workflows["topic_classification"],
             ],
             "job_metadata": {
                 "collections_queried": active_thought_collections,

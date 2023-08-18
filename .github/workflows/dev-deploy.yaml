@@ -19,8 +19,9 @@ on:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
-  ECR_REPOSITORY: "dev-topic-classification"
-  ECS_CLUSTER: "dev"
+  # The environment doesn't have to be specified in the ECR repo name,
+  # because we use separate AWS accounts for dev/prod/etc. workloads.
+  ECR_REPOSITORY: "topic-classification"
   ECS_TASK_DEFINITION_PATH: ".aws/dev-ecs-task-definition.json"
   CONTAINER_NAME: "topic-classification-runner"
 
@@ -77,4 +78,3 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@df9643053eda01f169e64a0e60233aacca83799a
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          cluster: ${{ env.ECS_CLUSTER }}

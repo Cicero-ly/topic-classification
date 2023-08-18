@@ -10,6 +10,9 @@
 name: Deploy to Amazon ECS (dev)
 
 on:
+  workflow_dispatch:
+    branches:
+      - dev
   push:
     branches:
       - dev

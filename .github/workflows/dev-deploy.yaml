@@ -45,7 +45,6 @@ jobs:
         uses: aws-actions/configure-aws-credentials@0e613a0980cbf65ed5b322eb7a1e075d28913a83
         with:
           role-to-assume: "arn:aws:iam::535165374018:role/GithubActionRunnerForTopicClassification"
-          role-session-name: DeployWorkloadMLAITopicClassificationDev
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR

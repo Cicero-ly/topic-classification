@@ -20,7 +20,7 @@ env:
   # The environment doesn't have to be specified in the ECR repo name,
   # because we use separate AWS accounts for dev/prod/etc. workloads.
   ECR_REPOSITORY: "topic-classification"
-  ECS_TASK_DEFINITION_PATH: ".aws/-ecs-task-definition.json"
+  ECS_TASK_DEFINITION_PATH: ".aws/prod-ecs-task-definition.json"
   CONTAINER_NAME: "topic-classification-runner"
 
 jobs:

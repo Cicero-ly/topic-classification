@@ -135,6 +135,7 @@ def filter_bad_candidates_for_classification(
     return (True, "")
 
 
+# TODO: We'll likely have to store transcript in S3 as opposed to directly in DB sooner than later.
 def store_transcript(thought_pointer, transcript):
     thought_collection = thought_pointer["collection"]
     thought_id = thought_pointer["_id"]

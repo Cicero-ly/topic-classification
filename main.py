@@ -286,18 +286,25 @@ def main(single_collection_find_limit=10000):
                 {"_id": thought["_id"]},
                 {
                     "$set": {
-                        # TODO: LATER: have these keys reference the constants.fields_written const so these
-                        # names are more centralized
                         "llm_generated_summary": generated_summary,
                         "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and rejected topics.
-                        "llm_processing_metadata": {
-                            "workflows_completed": [
-                                constants.workflows["summarization"],
-                                constants.workflows["topic_classification"],
-                            ],
-                            "fields_written": constants.fields_written,
+                    },
+                    "$push": {
+                        "llm_processing_metadata.workflows_completed": {
+                            "$each": [
+                                {
+                                    **constants.workflows["summarization"],
+                                    "last_performed": utils.get_now(),
+                                    "job_id": job_id,
+                                },
+                                {
+                                    **constants.workflows["topic_classification"],
+                                    "last_performed": utils.get_now(),
+                                    "job_id": job_id,
+                                },
+                            ]
                         },
-                    }
+                    },
                 },
             )
 
@@ -327,8 +334,7 @@ def main(single_collection_find_limit=10000):
             ],
             "job_metadata": {
                 "collections_queried": active_thought_collections,
-                "thoughts_updated": thoughts_classified,
-                "thoughts_updated_count": len(thoughts_classified),
+                "thoughts_classified_count": len(thoughts_classified),
                 "thoughts_skipped": thoughts_to_skip,
                 "thoughts_skipped_count": len(thoughts_to_skip),
                 "rejected_topics": all_rejected_topics,
@@ -337,6 +343,7 @@ def main(single_collection_find_limit=10000):
                     "ai_processing_errors": ai_processing_errors,
                 },
             },
+            "test_job": False if os.environ.get("PYTHON_ENV") == "production" else True,
         },
     )
 

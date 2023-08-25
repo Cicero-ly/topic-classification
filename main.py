@@ -212,7 +212,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                     # Handling these exceptions separately, because the error message
                     # is egregiously long (contains information about all the languages that
                     # are and aren't available)
-                    transcript_not_found_error = f"Error getting transcript for Youtube video at {thought['url']} due to NoTranscriptFound, NoTranscriptAvaialble, or CouldNotRetrieveTranscript."
+                    transcript_not_found_error = f"Transcript not available for Youtube video at {thought['url']}. "
                     errors.append(transcript_not_found_error)
                 except Exception as e:
                     print(

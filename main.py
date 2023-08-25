@@ -10,9 +10,10 @@ from anthropic import APIStatusError as AnthropicAPIStatusError
 from bson.objectid import ObjectId
 from langchain.document_loaders import YoutubeLoader
 from youtube_transcript_api._errors import (
-    CouldNotRetrieveTranscript,
     NoTranscriptAvailable,
     NoTranscriptFound,
+    TranscriptsDisabled,
+    TranslationLanguageNotAvailable,
 )
 
 import utils
@@ -205,7 +206,8 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 except (
                     NoTranscriptFound
                     or NoTranscriptAvailable
-                    or CouldNotRetrieveTranscript
+                    or TranscriptsDisabled
+                    or TranslationLanguageNotAvailable
                 ):
                     # Handling these exceptions separately, because the error message
                     # is egregiously long (contains information about all the languages that

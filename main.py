@@ -2,7 +2,6 @@ import os
 import time
 from pprint import pprint
 from typing import List, Tuple
-import html.parser as HTMLParser
 
 import openai
 import pymongo
@@ -256,7 +255,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 if thought_has_full_text:
                     parsed_content = thought["content_text"]
                 elif thought_needs_HTML_parsing:
-                    soup = BeautifulSoup(thought["content"], HTMLParser)
+                    soup = BeautifulSoup(thought["content"], "html.parser")
                     parsed_content = soup.get_text
                     print(soup.get_text)
             else:

@@ -148,6 +148,47 @@ def store_transcript(thought_pointer, transcript):
     return update_op.modified_count
 
 
+def parse_youtube_transcript(thought_id: ObjectId, youtube_url: str):
+    transcript = ""
+    errors = []
+    try:
+        # Right now, we are fetching fresh transcripts even if a youtube thought
+        # already has a transcript in `content_transcript`, since it was alluded to
+        # previously that those were quite poor
+        loader = YoutubeLoader.from_youtube_url(youtube_url)
+        document_list = loader.load()
+        if len(document_list) > 0:
+            transcript = document_list[0].page_content
+            store_transcript(
+                {
+                    "collection": constants.youtube_thought_collection,
+                    "_id": thought_id,
+                },
+                transcript,
+            )
+    except (
+        NoTranscriptFound
+        or NoTranscriptAvailable
+        or TranscriptsDisabled
+        or TranslationLanguageNotAvailable
+    ):
+        # Handling these exceptions separately, because the error message
+        # is egregiously long (contains information about all the languages that
+        # are and aren't available)
+        transcript_not_found_error = (
+            f"Transcript not available for Youtube video at {youtube_url}. "
+        )
+        errors.append(transcript_not_found_error)
+    except Exception as e:
+        print(
+            f"Misc. error getting transcript for Youtube video at {youtube_url}—see below:"
+        )
+        print(e)
+        errors.append(str(e))
+    finally:
+        return (transcript, errors)
+
+
 def collect_thoughts_for_classification(single_collection_find_limit=1000):
     active_thought_collections = os.environ["ACTIVE_THOUGHT_COLLECTIONS"].split(",")
     print("Active thought collections: ", active_thought_collections)
@@ -187,41 +228,18 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
             sort=[("_id", pymongo.DESCENDING)],
         ):
             parsed_content = ""
-            # TODO: LATER: Refactor this out
+            thought_is_youtube_video = thought.get("vid") != None
+            thought_is_article = (
+                thought.get("content_text") != None or thought.get("content") != None
+            )
+            thought_needs_HTML_parsing = (
+                thought.get("content_text") == None and thought.get("content") != None
+            )
             if thought.get("vid") != None:
-                try:
-                    # Right now, we are fetching fresh transcripts even if a youtube thought
-                    # already has a transcript in `content_transcript`, since it was alluded to
-                    # previously that those were quite poor
-                    loader = YoutubeLoader.from_youtube_url(thought.get("url"))
-                    document_list = loader.load()
-                    if len(document_list) > 0:
-                        transcript = document_list[0].page_content
-                        parsed_content = transcript
-                        store_transcript(
-                            {
-                                "collection": collection,
-                                "_id": thought["_id"],
-                            },
-                            transcript,
-                        )
-                except (
-                    NoTranscriptFound
-                    or NoTranscriptAvailable
-                    or TranscriptsDisabled
-                    or TranslationLanguageNotAvailable
-                ):
-                    # Handling these exceptions separately, because the error message
-                    # is egregiously long (contains information about all the languages that
-                    # are and aren't available)
-                    transcript_not_found_error = f"Transcript not available for Youtube video at {thought['url']}. "
-                    errors.append(transcript_not_found_error)
-                except Exception as e:
-                    print(
-                        f"Misc. error getting transcript for Youtube video at {thought['url']}—see below:"
-                    )
-                    print(e)
-                    errors.append(str(e))
+                parsed_content, fetch_transcript_errors = parse_youtube_transcript(
+                    thought["_id"], thought["url"]
+                )
+                errors.extend(fetch_transcript_errors)
             elif thought.get("content_text") != None:
                 parsed_content = thought["content_text"]
             else:

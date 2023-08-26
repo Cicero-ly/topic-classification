@@ -148,7 +148,7 @@ def store_transcript(thought_pointer, transcript):
     return update_op.modified_count
 
 
-def parse_youtube_transcript(thought_id: ObjectId, youtube_url: str):
+def parse_youtube_transcript(youtube_url: str):
     transcript = ""
     errors = []
     try:
@@ -159,13 +159,6 @@ def parse_youtube_transcript(thought_id: ObjectId, youtube_url: str):
         document_list = loader.load()
         if len(document_list) > 0:
             transcript = document_list[0].page_content
-            store_transcript(
-                {
-                    "collection": constants.youtube_thought_collection,
-                    "_id": thought_id,
-                },
-                transcript,
-            )
     except (
         NoTranscriptFound
         or NoTranscriptAvailable
@@ -197,51 +190,66 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
     errors = []
 
     for collection in active_thought_collections:
+        filter = {
+            "flags.avoid_topic_classification": {"$ne": True},
+            "valuable": True,
+            "reviewed": True,
+            "voicesInContent": {"$ne": None},
+            "title": {"$ne": None},
+            "url": {"$ne": None},
+            "llm_generated_legacy_topics": {"$exists": False},
+            "$or": [
+                # If it's an article, it will have "content_text". If it's a youtube video, it will have "vid".
+                {"content_text": {"$ne": None}},
+                {"content": {"$ne": None}},
+                {"vid": {"$ne": None}},
+            ],
+        }
+        projection = {
+            "_id": 1,
+            "url": 1,
+            "vid": 1,
+            "title": 1,
+            "content_text": 1,
+            "content": 1,
+            "voicesInContent": 1,
+        }
         for thought in thoughts_db[collection].find(
-            {
-                "flags.avoid_topic_classification": {"$ne": True},
-                "valuable": True,
-                "reviewed": True,
-                "voicesInContent": {"$ne": None},
-                "title": {"$ne": None},
-                "url": {"$ne": None},
-                "llm_generated_legacy_topics": {"$exists": False},
-                "$or": [
-                    # If it's an article, it will have "content_text". If it's a youtube video, it will have "vid".
-                    {"content_text": {"$ne": None}},
-                    {"content": {"$ne": None}},
-                    {"vid": {"$ne": None}},
-                ],
-            },
-            # Projections
-            {
-                "_id": 1,
-                "url": 1,
-                "vid": 1,
-                "title": 1,
-                "content_text": 1,
-                "content": 1,
-                # Used for filtering out certain voices to prevent classification
-                "voicesInContent": 1,
-            },
+            filter,
+            projection,
             limit=single_collection_find_limit,
             sort=[("_id", pymongo.DESCENDING)],
         ):
             parsed_content = ""
+
+            # Criteria for where to get the content, based on the type of thought and what's available
             thought_is_youtube_video = thought.get("vid") != None
             thought_is_article = (
                 thought.get("content_text") != None or thought.get("content") != None
             )
+            thought_has_full_text = thought.get("content_text") != None
             thought_needs_HTML_parsing = (
                 thought.get("content_text") == None and thought.get("content") != None
             )
-            if thought.get("vid") != None:
-                parsed_content, fetch_transcript_errors = parse_youtube_transcript(
-                    thought["_id"], thought["url"]
+
+            if thought_is_youtube_video:
+                transcript, fetch_transcript_errors = parse_youtube_transcript(
+                    thought["url"]
                 )
+                store_transcript(
+                    {
+                        "collection": constants.youtube_thought_collection,
+                        "_id": thought["_id"],
+                    },
+                    transcript,
+                )
+                parsed_content = transcript
                 errors.extend(fetch_transcript_errors)
-            elif thought.get("content_text") != None:
-                parsed_content = thought["content_text"]
+            elif thought_is_article:
+                if thought_has_full_text:
+                    parsed_content = thought["content_text"]
+                elif thought_needs_HTML_parsing:
+                    parsed_content = parse_HTML_content(thought["content"])
             else:
                 continue
 

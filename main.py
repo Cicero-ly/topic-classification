@@ -31,6 +31,8 @@ from data_stores.mongodb import thoughts_db
 anthropic = Anthropic()
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
+PYTHON_ENV = os.environ.get("PYTHON_ENV", "development")
+
 
 def generate_summary(content: str, title: str):
     human_prompt = f"""
@@ -323,13 +325,23 @@ def main(single_collection_find_limit=10000):
                 else:
                     all_rejected_topics[topic] = 1
 
+            # Only overwrite the thought's "topics" field when in production
+            if PYTHON_ENV == "production":
+                fields_to_set = {
+                    "llm_generated_summary": generated_summary,
+                    "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and rejected topics.
+                    "topics": generated_topics["accepted_topics"],
+                }
+            else:
+                fields_to_set = {
+                    "llm_generated_summary": generated_summary,
+                    "llm_generated_legacy_topics": generated_topics,
+                }
+
             update_op = thoughts_db[thought["collection"]].update_one(
                 {"_id": thought["_id"]},
                 {
-                    "$set": {
-                        "llm_generated_summary": generated_summary,
-                        "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and rejected topics.
-                    },
+                    "$set": fields_to_set,
                     "$push": {
                         "llm_processing_metadata.workflows_completed": {
                             "$each": [
@@ -384,7 +396,7 @@ def main(single_collection_find_limit=10000):
                     "ai_processing_errors": ai_processing_errors,
                 },
             },
-            "test_job": False if os.environ.get("PYTHON_ENV") == "production" else True,
+            "test_job": False if PYTHON_ENV == "production" else True,
         },
     )
 
@@ -396,10 +408,9 @@ def main(single_collection_find_limit=10000):
 if __name__ == "__main__":
     tic = time.perf_counter()
 
-    python_env = os.environ.get("PYTHON_ENV", "development")
-    if python_env == "production":
+    if PYTHON_ENV == "production":
         single_collection_find_limit = os.environ["SINGLE_COLLECTION_FIND_LIMIT"]
-    elif python_env == "data_analysis":
+    elif PYTHON_ENV == "data_analysis":
         # A larger `n` for testing AI performance and performing more substantive data analysis.
         single_collection_find_limit = 100
     else:

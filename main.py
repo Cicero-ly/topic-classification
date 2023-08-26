@@ -161,14 +161,15 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 "flags.avoid_topic_classification": {"$ne": True},
                 "valuable": True,
                 "reviewed": True,
-                "voicesInContent": {"$exists": True},
-                "title": {"$exists": True},
-                "url": {"$exists": True},
+                "voicesInContent": {"$ne": None},
+                "title": {"$ne": None},
+                "url": {"$ne": None},
                 "llm_generated_legacy_topics": {"$exists": False},
                 "$or": [
                     # If it's an article, it will have "content_text". If it's a youtube video, it will have "vid".
-                    {"content_text": {"$exists": True}},
-                    {"vid": {"$exists": True}},
+                    {"content_text": {"$ne": None}},
+                    {"content": {"$ne": None}},
+                    {"vid": {"$ne": None}},
                 ],
             },
             # Projections
@@ -178,6 +179,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 "vid": 1,
                 "title": 1,
                 "content_text": 1,
+                "content": 1,
                 # Used for filtering out certain voices to prevent classification
                 "voicesInContent": 1,
             },

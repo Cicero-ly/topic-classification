@@ -139,6 +139,9 @@ def filter_bad_candidates_for_classification(
     if ObjectId("64505e4c509cac9a8e7e226d") in thought["voicesInContent"]:
         reason = "Ignore content from the voice 'Public'"
         return (False, reason)
+    if "Hili dialogue" in thought["title"]:
+        reason = "Ignore Jerry Coyne's Hili dialogues"
+        return (False, reason)
     return (True, "")
 
 

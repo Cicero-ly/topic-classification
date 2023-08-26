@@ -2,11 +2,19 @@ import os
 import time
 from pprint import pprint
 from typing import List, Tuple
+import html.parser as HTMLParser
 
 import openai
 import pymongo
 from anthropic import AI_PROMPT, HUMAN_PROMPT, Anthropic
 from anthropic import APIStatusError as AnthropicAPIStatusError
+
+# We're sticking with the HTML parser included in Python's standard library. See https://www.crummy.com/software/BeautifulSoup/bs4/doc/#installing-a-parser
+# If we ever have issues with performance, we should consider lxml, although managing this as a dependency
+# can be a bit more of a headache than most of our other strictly-python deps.
+# (lxml is written in C, and the python package lxml is simply a
+# "pythonic binding" of the underlying libxml2 and libxslt.)
+from bs4 import BeautifulSoup
 from bson.objectid import ObjectId
 from langchain.document_loaders import YoutubeLoader
 from youtube_transcript_api._errors import (
@@ -16,10 +24,9 @@ from youtube_transcript_api._errors import (
     TranslationLanguageNotAvailable,
 )
 
-import utils
-
 # TODO: LATER: fetch topics from db so this is always up-to-date
 import constants
+import utils
 from data_stores.mongodb import thoughts_db
 
 anthropic = Anthropic()
@@ -249,7 +256,9 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                 if thought_has_full_text:
                     parsed_content = thought["content_text"]
                 elif thought_needs_HTML_parsing:
-                    parsed_content = parse_HTML_content(thought["content"])
+                    soup = BeautifulSoup(thought["content"], HTMLParser)
+                    parsed_content = soup.get_text
+                    print(soup.get_text)
             else:
                 continue
 

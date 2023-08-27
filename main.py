@@ -7,6 +7,13 @@ import openai
 import pymongo
 from anthropic import AI_PROMPT, HUMAN_PROMPT, Anthropic
 from anthropic import APIStatusError as AnthropicAPIStatusError
+
+# We're sticking with the HTML parser included in Python's standard library. See https://www.crummy.com/software/BeautifulSoup/bs4/doc/#installing-a-parser
+# If we ever have issues with performance, we should consider lxml, although managing this as a dependency
+# can be a bit more of a headache than most of our other strictly-python deps.
+# (lxml is written in C, and the python package lxml is simply a
+# "pythonic binding" of the underlying libxml2 and libxslt.)
+from bs4 import BeautifulSoup
 from bson.objectid import ObjectId
 from langchain.document_loaders import YoutubeLoader
 from youtube_transcript_api._errors import (
@@ -16,14 +23,15 @@ from youtube_transcript_api._errors import (
     TranslationLanguageNotAvailable,
 )
 
-import utils
-
 # TODO: LATER: fetch topics from db so this is always up-to-date
 import constants
+import utils
 from data_stores.mongodb import thoughts_db
 
 anthropic = Anthropic()
 openai.api_key = os.environ["OPENAI_API_KEY"]
+
+PYTHON_ENV = os.environ.get("PYTHON_ENV", "development")
 
 
 def generate_summary(content: str, title: str):
@@ -133,6 +141,12 @@ def filter_bad_candidates_for_classification(
     if ObjectId("64505e4c509cac9a8e7e226d") in thought["voicesInContent"]:
         reason = "Ignore content from the voice 'Public'"
         return (False, reason)
+    if "Hili dialogue" in thought["title"]:
+        reason = "Ignore Jerry Coyne's Hili dialogues"
+        return (False, reason)
+    if ObjectId("6195895295d7549fb48c32d9") in thought["voicesInContent"]:
+        reason = "Ignore Milan Singh articles"
+        return (False, reason)
     return (True, "")
 
 
@@ -148,6 +162,40 @@ def store_transcript(thought_pointer, transcript):
     return update_op.modified_count
 
 
+def parse_youtube_transcript(youtube_url: str):
+    transcript = ""
+    errors = []
+    try:
+        # Right now, we are fetching fresh transcripts even if a youtube thought
+        # already has a transcript in `content_transcript`, since it was alluded to
+        # previously that those were quite poor
+        loader = YoutubeLoader.from_youtube_url(youtube_url)
+        document_list = loader.load()
+        if len(document_list) > 0:
+            transcript = document_list[0].page_content
+    except (
+        NoTranscriptFound
+        or NoTranscriptAvailable
+        or TranscriptsDisabled
+        or TranslationLanguageNotAvailable
+    ):
+        # Handling these exceptions separately, because the error message
+        # is egregiously long (contains information about all the languages that
+        # are and aren't available)
+        transcript_not_found_error = (
+            f"Transcript not available for Youtube video at {youtube_url}. "
+        )
+        errors.append(transcript_not_found_error)
+    except Exception as e:
+        print(
+            f"Misc. error getting transcript for Youtube video at {youtube_url}—see below:"
+        )
+        print(e)
+        errors.append(str(e))
+    finally:
+        return (transcript, errors)
+
+
 def collect_thoughts_for_classification(single_collection_find_limit=1000):
     active_thought_collections = os.environ["ACTIVE_THOUGHT_COLLECTIONS"].split(",")
     print("Active thought collections: ", active_thought_collections)
@@ -156,72 +204,67 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
     errors = []
 
     for collection in active_thought_collections:
+        filter = {
+            "flags.avoid_topic_classification": {"$ne": True},
+            "valuable": True,
+            "reviewed": True,
+            "voicesInContent": {"$ne": None},
+            "title": {"$ne": None},
+            "url": {"$ne": None},
+            "llm_generated_legacy_topics": {"$exists": False},
+            "$or": [
+                # If it's an article, it will have "content_text". If it's a youtube video, it will have "vid".
+                {"content_text": {"$ne": None}},
+                {"content": {"$ne": None}},
+                {"vid": {"$ne": None}},
+            ],
+        }
+        projection = {
+            "_id": 1,
+            "url": 1,
+            "vid": 1,
+            "title": 1,
+            "content_text": 1,
+            "content": 1,
+            "voicesInContent": 1,
+        }
         for thought in thoughts_db[collection].find(
-            {
-                "flags.avoid_topic_classification": {"$ne": True},
-                "valuable": True,
-                "reviewed": True,
-                "voicesInContent": {"$exists": True},
-                "title": {"$exists": True},
-                "url": {"$exists": True},
-                "llm_generated_legacy_topics": {"$exists": False},
-                "$or": [
-                    # If it's an article, it will have "content_text". If it's a youtube video, it will have "vid".
-                    {"content_text": {"$exists": True}},
-                    {"vid": {"$exists": True}},
-                ],
-            },
-            # Projections
-            {
-                "_id": 1,
-                "url": 1,
-                "vid": 1,
-                "title": 1,
-                "content_text": 1,
-                # Used for filtering out certain voices to prevent classification
-                "voicesInContent": 1,
-            },
+            filter,
+            projection,
             limit=single_collection_find_limit,
             sort=[("_id", pymongo.DESCENDING)],
         ):
             parsed_content = ""
-            # TODO: LATER: Refactor this out
-            if thought.get("vid") != None:
-                try:
-                    # Right now, we are fetching fresh transcripts even if a youtube thought
-                    # already has a transcript in `content_transcript`, since it was alluded to
-                    # previously that those were quite poor
-                    loader = YoutubeLoader.from_youtube_url(thought.get("url"))
-                    document_list = loader.load()
-                    if len(document_list) > 0:
-                        transcript = document_list[0].page_content
-                        parsed_content = transcript
-                        store_transcript(
-                            {
-                                "collection": collection,
-                                "_id": thought["_id"],
-                            },
-                            transcript,
-                        )
-                except (
-                    NoTranscriptFound
-                    or NoTranscriptAvailable
-                    or TranscriptsDisabled
-                    or TranslationLanguageNotAvailable
-                ):
-                    # Handling these exceptions separately, because the error message
-                    # is egregiously long (contains information about all the languages that
-                    # are and aren't available)
-                    transcript_not_found_error = f"Transcript not available for Youtube video at {thought['url']}. "
-                    errors.append(transcript_not_found_error)
-                except Exception as e:
-                    print(
-                        f"Misc. error getting transcript for Youtube video at {thought['url']}—see below:"
-                    )
-                    print(e)
-                    errors.append(str(e))
-            elif thought.get("content_text") != None:
-                parsed_content = thought["content_text"]
+
+            # Criteria for where to get the content, based on the type of thought and what's available
+            thought_is_youtube_video = thought.get("vid") != None
+            thought_is_article = (
+                thought.get("content_text") != None or thought.get("content") != None
+            )
+            thought_has_full_text = thought.get("content_text") != None
+            thought_needs_HTML_parsing = (
+                thought.get("content_text") == None and thought.get("content") != None
+            )
+
+            if thought_is_youtube_video:
+                transcript, fetch_transcript_errors = parse_youtube_transcript(
+                    thought["url"]
+                )
+                store_transcript(
+                    {
+                        "collection": constants.youtube_thought_collection,
+                        "_id": thought["_id"],
+                    },
+                    transcript,
+                )
+                parsed_content = transcript
+                errors.extend(fetch_transcript_errors)
+            elif thought_is_article:
+                if thought_has_full_text:
+                    parsed_content = thought["content_text"]
+                elif thought_needs_HTML_parsing:
+                    soup = BeautifulSoup(thought["content"], "html.parser")
+                    parsed_content = soup.get_text()
             else:
                 continue
 
@@ -285,13 +328,23 @@ def main(single_collection_find_limit=10000):
                 else:
                     all_rejected_topics[topic] = 1
 
+            # Only overwrite the thought's "topics" field when in production
+            if PYTHON_ENV == "production":
+                fields_to_set = {
+                    "llm_generated_summary": generated_summary,
+                    "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and rejected topics.
+                    "topics": generated_topics["accepted_topics"],
+                }
+            else:
+                fields_to_set = {
+                    "llm_generated_summary": generated_summary,
+                    "llm_generated_legacy_topics": generated_topics,
+                }
+
             update_op = thoughts_db[thought["collection"]].update_one(
                 {"_id": thought["_id"]},
                 {
-                    "$set": {
-                        "llm_generated_summary": generated_summary,
-                        "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and rejected topics.
-                    },
+                    "$set": fields_to_set,
                     "$push": {
                         "llm_processing_metadata.workflows_completed": {
                             "$each": [
@@ -306,6 +359,9 @@ def main(single_collection_find_limit=10000):
                                     "job_id": job_id,
                                 },
                             ]
+                        },
+                        "llm_processing_metadata.all_fields_modified": {
+                            "$each": list(fields_to_set.keys())
                         },
                     },
                 },
@@ -346,7 +402,7 @@ def main(single_collection_find_limit=10000):
                     "ai_processing_errors": ai_processing_errors,
                 },
             },
-            "test_job": False if os.environ.get("PYTHON_ENV") == "production" else True,
+            "test_job": False if PYTHON_ENV == "production" else True,
         },
     )
 
@@ -358,10 +414,9 @@ def main(single_collection_find_limit=10000):
 if __name__ == "__main__":
     tic = time.perf_counter()
 
-    python_env = os.environ.get("PYTHON_ENV", "development")
-    if python_env == "production":
+    if PYTHON_ENV == "production":
         single_collection_find_limit = os.environ["SINGLE_COLLECTION_FIND_LIMIT"]
-    elif python_env == "data_analysis":
+    elif PYTHON_ENV == "data_analysis":
         # A larger `n` for testing AI performance and performing more substantive data analysis.
         single_collection_find_limit = 100
     else:

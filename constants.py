@@ -1,3 +1,5 @@
+youtube_thought_collection = "yt"
+
 workflows = {
     "summarization": {
         "name": "summarization",

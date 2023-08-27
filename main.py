@@ -357,6 +357,9 @@ def main(single_collection_find_limit=10000):
                                 },
                             ]
                         },
+                        "llm_processing_metadata.all_fields_modified": {
+                            "$each": list(fields_to_set.keys())
+                        },
                     },
                 },
             )

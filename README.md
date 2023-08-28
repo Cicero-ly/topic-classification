@@ -31,7 +31,7 @@ Topic classification is performed in two steps:
 
 This is a batch job, and runs at some periodic interval on a separate loop from the primary content ingestion ([Cicero-ly/integrations](https://github.com/cicero-ly/integrations)).
 
-It queries for "valuable" and "reviewed" thoughts (that haven't been looked at for topic classification yet), summarizes them, then assigns topics to the thought itself. We also save ancillary artifacts that we get from this process, including `rejected_topics` (topics which don't fit our current criteria, but we might need or want to analyze later) and `content_transcript` for youtube videos. 
+It queries for "valuable" and "reviewed" thoughts (that haven't been looked at for topic classification yet), summarizes them, then assigns topics to the thought itself. We also save ancillary artifacts that we get from this process, including `untracked_topics` (topics which don't fit our current criteria, but we might need or want to analyze later) and `content_transcript` for youtube videos. 
 
 ### Filtering
 There is also an additional rudimentary filter we use to filter out thoughts _after_ they've been fetched from DB, but should not be processed for the purposes of this pipeline (see `thought_should_be_processed()`).

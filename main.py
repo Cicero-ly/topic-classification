@@ -106,14 +106,14 @@ def generate_topics(content: str, title: str):
     response = completion.choices[0].message
 
     parsed_topics = []
-    rejected_topics = []
+    untracked_topics = []
     for topic in response.content.split("\n"):
         stripped_topic = topic.replace("-", "").strip()
         if stripped_topic in constants.topics:
             parsed_topics.append(stripped_topic)
         else:
-            rejected_topics.append(stripped_topic)
-    return {"accepted_topics": parsed_topics, "rejected_topics": rejected_topics}
+            untracked_topics.append(stripped_topic)
+    return {"accepted_topics": parsed_topics, "untracked_topics": untracked_topics}
 
 
 # TODO: LATER: something more robust down the road...possibly tapping into our existing rules db collection
@@ -301,7 +301,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
 def main(single_collection_find_limit=10000):
     # Setup/init
     job_id = utils.create_job()
-    all_rejected_topics = {}
+    all_untracked_topics = {}
     thoughts_classified: List[ObjectId] = []
     ai_processing_errors = []
 
@@ -319,20 +319,20 @@ def main(single_collection_find_limit=10000):
             generated_summary = generate_summary(thought["content"], thought["title"])
             generated_topics = generate_topics(generated_summary, thought["title"])
 
-            # Here we compile all rejected topics for later analysis. We don't need to include
+            # Here we compile all untracked topics for later analysis. We don't need to include
             # reference to the original thought, because the thought itself will contain its own list of
-            # accepted and rejected topics.
-            for topic in generated_topics["rejected_topics"]:
-                if all_rejected_topics.get(topic) is not None:
-                    all_rejected_topics[topic] += 1
+            # accepted and untracked topics.
+            for topic in generated_topics["untracked_topics"]:
+                if all_untracked_topics.get(topic) is not None:
+                    all_untracked_topics[topic] += 1
                 else:
-                    all_rejected_topics[topic] = 1
+                    all_untracked_topics[topic] = 1
 
             # Only overwrite the thought's "topics" field when in production
             if PYTHON_ENV == "production":
                 fields_to_set = {
                     "llm_generated_summary": generated_summary,
-                    "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and rejected topics.
+                    "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and untracked topics.
                     "topics": generated_topics["accepted_topics"],
                 }
             else:
@@ -396,7 +396,7 @@ def main(single_collection_find_limit=10000):
                 "thoughts_classified_count": len(thoughts_classified),
                 "thoughts_skipped": thoughts_to_skip,
                 "thoughts_skipped_count": len(thoughts_to_skip),
-                "rejected_topics": all_rejected_topics,
+                "untracked_topics": all_untracked_topics,
                 "errors": {
                     "data_collection_errors": data_collection_errors,
                     "ai_processing_errors": ai_processing_errors,

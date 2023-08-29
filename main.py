@@ -211,7 +211,11 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                     "llm_generated_legacy_topics": {"$exists": False},
                     "reviewed": True,
                     "valuable": True,
-                    "editingUsers": {"$exists": False},
+                    "$or": [
+                        # It's possible that editingUsers is an empty array
+                        {"editingUsers": {"$size": 0}},
+                        {"editingUsers": {"$exists": False}},
+                    ],
                     "voicesInContent": {"$ne": None},
                     "title": {"$ne": None},
                     "url": {"$ne": None},

@@ -56,3 +56,4 @@ It is deployed as a scheduled batch job, running in AWS ECS (Fargate). See the t
 ## TODOs
 - Tests
 - Integrate S3 transcript storage
+- Now that we're using an aggregation pipeline, it probably makes more sense to append the current filter logic (found in `filter_bad_candidates_for_classification`) as a separate `$match` stage so this filter logic can be included in the master query.

@@ -211,11 +211,6 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                     "llm_generated_legacy_topics": {"$exists": False},
                     "reviewed": True,
                     "valuable": True,
-                    "$or": [
-                        # It's possible that editingUsers is an empty array
-                        {"editingUsers": {"$size": 0}},
-                        {"editingUsers": {"$exists": False}},
-                    ],
                     "voicesInContent": {"$ne": None},
                     "title": {"$ne": None},
                     "url": {"$ne": None},
@@ -230,8 +225,24 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                     ],
                 }
             },
-            {"$addFields": {"voices_in_content_size": {"$size": "$voicesInContent"}}},
-            {"$match": {"voices_in_content_size": {"$gt": 0}}},
+            {
+                "$addFields": {
+                    "voices_in_content_count": {"$size": "$voicesInContent"},
+                    "editing_users_count": {
+                        "$cond": {
+                            "if": {"$isArray": "$editingUsers"},
+                            "then": {"$size": "$editingUsers"},
+                            "else": 0,
+                        }
+                    },
+                },
+            },
+            {
+                "$match": {
+                    "voices_in_content_count": {"$gt": 0},
+                    "editing_users_count": 0,
+                }
+            },
             {"$sort": {"_id": pymongo.DESCENDING}},
             {"$limit": single_collection_find_limit},
             {

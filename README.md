@@ -52,3 +52,8 @@ Though we're going to use the summaries generated from this process as actual su
 ## How this is deployed
 
 It is deployed as a scheduled batch job, running in AWS ECS (Fargate). See the task definitions in the .aws folder. It is scheduled using AWS EventBridge, with a cron schedule target service as ECS itself. The cron targets the ECS task definition (latest), and runs it once a day. See the AWS Management Console for the current schedule selection to see when it runs.
+
+## TODOs
+- Tests
+- Integrate S3 transcript storage
+- Now that we're using an aggregation pipeline, it probably makes more sense to append the current filter logic (found in `filter_bad_candidates_for_classification`) as a separate `$match` stage so this filter logic can be included in the master query.

@@ -204,36 +204,50 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
     errors = []
 
     for collection in active_thought_collections:
-        filter = {
-            "flags.avoid_topic_classification": {"$ne": True},
-            "valuable": True,
-            "reviewed": True,
-            "voicesInContent": {"$ne": None},
-            "title": {"$ne": None},
-            "url": {"$ne": None},
-            "llm_generated_legacy_topics": {"$exists": False},
-            "$or": [
-                # If it's an article, it will have "content_text". If it's a youtube video, it will have "vid".
-                {"content_text": {"$ne": None}},
-                {"content": {"$ne": None}},
-                {"vid": {"$ne": None}},
-            ],
-        }
-        projection = {
-            "_id": 1,
-            "url": 1,
-            "vid": 1,
-            "title": 1,
-            "content_text": 1,
-            "content": 1,
-            "voicesInContent": 1,
-        }
-        for thought in thoughts_db[collection].find(
-            filter,
-            projection,
-            limit=single_collection_find_limit,
-            sort=[("_id", pymongo.DESCENDING)],
-        ):
+        pipeline = [
+            {
+                "$match": {
+                    "flags.avoid_topic_classification": {"$ne": True},
+                    "llm_generated_legacy_topics": {"$exists": False},
+                    "reviewed": True,
+                    "valuable": True,
+                    "$or": [
+                        # It's possible that editingUsers is an empty array
+                        {"editingUsers": {"$size": 0}},
+                        {"editingUsers": {"$exists": False}},
+                    ],
+                    "voicesInContent": {"$ne": None},
+                    "title": {"$ne": None},
+                    "url": {"$ne": None},
+                    "$or": [
+                        # For articles that can be classified, we need content_text or content.
+                        # Youtube videos won't have content_text or content, but rather vid
+                        # (but "vid" is a proxy value for making sure that a youtube video is a youtube video);
+                        # "vid" is not actually used.
+                        {"content_text": {"$ne": None}},
+                        {"content": {"$ne": None}},
+                        {"vid": {"$ne": None}},
+                    ],
+                }
+            },
+            {"$addFields": {"voices_in_content_size": {"$size": "$voicesInContent"}}},
+            {"$match": {"voices_in_content_size": {"$gt": 0}}},
+            {"$sort": {"_id": pymongo.DESCENDING}},
+            {"$limit": single_collection_find_limit},
+            {
+                "$project": {
+                    "url": 1,
+                    "vid": 1,
+                    "title": 1,
+                    "content_text": 1,
+                    "content": 1,
+                    "voicesInContent": 1,
+                }
+            },
+        ]
+
+        thought_cursor = thoughts_db[collection].aggregate(pipeline)
+        for thought in thought_cursor:
             parsed_content = ""
 
             # Criteria for where to get the content, based on the type of thought and what's available

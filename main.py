@@ -147,6 +147,9 @@ def filter_bad_candidates_for_classification(
     if ObjectId("6195895295d7549fb48c32d9") in thought["voicesInContent"]:
         reason = "Ignore Milan Singh articles"
         return (False, reason)
+    if ObjectId("629970b464906c0bea98fbc7") in thought["voicesInContent"]:
+        reason = "Ignore David Pakman articles"
+        return (False, reason)
     return (True, "")
 
 

@@ -440,7 +440,7 @@ if __name__ == "__main__":
     tic = time.perf_counter()
 
     if PYTHON_ENV == "production":
-        single_collection_find_limit = os.environ["SINGLE_COLLECTION_FIND_LIMIT"]
+        single_collection_find_limit = int(os.environ["SINGLE_COLLECTION_FIND_LIMIT"])
     elif PYTHON_ENV == "data_analysis":
         # A larger `n` for testing AI performance and performing more substantive data analysis.
         single_collection_find_limit = 100

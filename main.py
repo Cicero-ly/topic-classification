@@ -59,7 +59,7 @@ def generate_summary(content: str, title: str):
             print(
                 f"Anthropic API service unavailable. Retrying again... ({i+1}/{retries})"
             )
-            time.sleep(1)
+            time.sleep(3)
     return response
 
 
@@ -101,7 +101,7 @@ def generate_topics(content: str, title: str):
             break
         except openai.error.ServiceUnavailableError:
             print(f"OpenAI service unavailable. Retrying again... ({i+1}/{retries})")
-            time.sleep(1)
+            time.sleep(3)
 
     response = completion.choices[0].message
 

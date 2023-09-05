@@ -154,7 +154,7 @@ def filter_bad_candidates_for_classification(
         reason = "Ignore Jerry Coyne's Hili dialogues"
         return (False, reason)
     if (
-        "Wildlife Photos" in thought["title"]
+        "wildlife photos" in thought["title"]
         and ObjectId("60cfdfecdbc5ba3af65ce81e") in thought["voicesInContent"]
     ):
         reason = "Ignore Jerry Coyne's Reader's Wildlife Photos"

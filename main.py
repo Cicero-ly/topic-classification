@@ -153,6 +153,12 @@ def filter_bad_candidates_for_classification(
     if "Hili dialogue" in thought["title"]:
         reason = "Ignore Jerry Coyne's Hili dialogues"
         return (False, reason)
+    if (
+        "Wildlife Photos" in thought["title"]
+        and ObjectId("60cfdfecdbc5ba3af65ce81e") in thought["voicesInContent"]
+    ):
+        reason = "Ignore Jerry Coyne's Reader's Wildlife Photos"
+        return (False, reason)
     if ObjectId("6195895295d7549fb48c32d9") in thought["voicesInContent"]:
         reason = "Ignore Milan Singh articles"
         return (False, reason)

@@ -129,6 +129,15 @@ def filter_bad_candidates_for_classification(
     if "assorted links" in thought["title"]:
         reason = "Ignore Tyler Cowen's 'assorted links'"
         return (False, reason)
+    if "TGIF" in thought["title"] and "thefp" in thought["url"]:
+        reason = 'Ignore "The Free Press" TGIF articles'
+        return (False, reason)
+    if (
+        "mail" in thought["title"]
+        and ObjectId("6163165d85b48615886b5718") in thought["voicesInContent"]
+    ):
+        reason = 'Ignore "mailbag" posts by Matthew Yglesias'
+        return (False, reason)
     if "appeared first on Marginal REVOLUTION" in parsed_content[-250:]:
         reason = "Ignore short or truncated Tyler Cowen content"
         return (False, reason)

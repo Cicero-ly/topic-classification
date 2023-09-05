@@ -57,3 +57,5 @@ It is deployed as a scheduled batch job, running in AWS ECS (Fargate). See the t
 - Tests
 - Integrate S3 transcript storage
 - Now that we're using an aggregation pipeline, it probably makes more sense to append the current filter logic (found in `filter_bad_candidates_for_classification`) as a separate `$match` stage so this filter logic can be included in the master query.
+- Add time elapsed to job document instead of just logs
+- Fix what's logged in `ai_processing_errors` (right now, it's hard to tell what error came from what—and also it seems to be logging "interim errors" to the job document during the retry logic, when in fact it should only log the final error if after the max retries, it still fails)

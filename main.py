@@ -151,7 +151,10 @@ def filter_bad_candidates_for_classification(
     if ObjectId("64505e4c509cac9a8e7e226d") in thought["voicesInContent"]:
         reason = "Ignore content from the voice 'Public'"
         return (False, reason)
-    if ObjectId("60cfdfecdbc5ba3af65ce81e") in thought["voicesInContent"]:
+    if (
+        ObjectId("60cfdfecdbc5ba3af65ce81e") in thought["voicesInContent"]
+        or ObjectId("6144af944d89a998bdef2aef") in thought["voicesInContent"]
+    ):
         reason = "Ignore Jerry Coyne"
         return (False, reason)
     if ObjectId("6302c1f6bce5b9d5af604a27") in thought["voicesInContent"]:

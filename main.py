@@ -126,8 +126,18 @@ def filter_bad_candidates_for_classification(
     If a thought does not pass the filter, it will also be flagged in the DB to ensure
     it isn't considered again for future processing.
     """
-    if "assorted links" in thought["title"]:
-        reason = "Ignore Tyler Cowen's 'assorted links'"
+
+    # General ignore patterns:
+    if len(parsed_content) < 450:
+        reason = "Ignore content if character count < 450"
+        return (False, reason)
+    if "read more" in parsed_content[-250:]:
+        reason = "Ignore truncated content"
+        return (False, reason)
+
+    # Specific ignore patterns:
+    if "marginalrevolution" in thought["url"]:
+        reason = "Ignore Tyler Cowen content"
         return (False, reason)
     if "TGIF" in thought["title"] and "thefp" in thought["url"]:
         reason = 'Ignore "The Free Press" TGIF articles'
@@ -138,26 +148,17 @@ def filter_bad_candidates_for_classification(
     ):
         reason = 'Ignore "mailbag" posts by Matthew Yglesias'
         return (False, reason)
-    if "appeared first on Marginal REVOLUTION" in parsed_content[-250:]:
-        reason = "Ignore short or truncated Tyler Cowen content"
-        return (False, reason)
-    if len(parsed_content) < 450:
-        reason = "Ignore content if character count < 450"
-        return (False, reason)
-    if "read more" in parsed_content[-250:]:
-        reason = "Ignore truncated content"
-        return (False, reason)
     if ObjectId("64505e4c509cac9a8e7e226d") in thought["voicesInContent"]:
         reason = "Ignore content from the voice 'Public'"
         return (False, reason)
-    if "Hili dialogue" in thought["title"]:
-        reason = "Ignore Jerry Coyne's Hili dialogues"
+    if ObjectId("60cfdfecdbc5ba3af65ce81e") in thought["voicesInContent"]:
+        reason = "Ignore Jerry Coyne"
         return (False, reason)
-    if (
-        "wildlife photos" in thought["title"]
-        and ObjectId("60cfdfecdbc5ba3af65ce81e") in thought["voicesInContent"]
-    ):
-        reason = "Ignore Jerry Coyne's Reader's Wildlife Photos"
+    if ObjectId("6302c1f6bce5b9d5af604a27") in thought["voicesInContent"]:
+        reason = "Ignore Alex Gangitano"
+        return (False, reason)
+    if "johndcook" in thought["url"]:
+        reason = "Ignore johndcook.com"
         return (False, reason)
     if ObjectId("6195895295d7549fb48c32d9") in thought["voicesInContent"]:
         reason = "Ignore Milan Singh articles"

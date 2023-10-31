@@ -3,10 +3,11 @@ import time
 from pprint import pprint
 from typing import List, Tuple
 
-import openai
 import pymongo
 from anthropic import AI_PROMPT, HUMAN_PROMPT, Anthropic
 from anthropic import APIStatusError as AnthropicAPIStatusError
+
+
 
 # We're sticking with the HTML parser included in Python's standard library. See https://www.crummy.com/software/BeautifulSoup/bs4/doc/#installing-a-parser
 # If we ever have issues with performance, we should consider lxml, although managing this as a dependency
@@ -26,99 +27,24 @@ from youtube_transcript_api._errors import (
 # TODO: LATER: fetch topics from db so this is always up-to-date
 import constants
 import utils
+from ml_utils import ClaudeLLM, decouple_rung, identify_rung
 from data_stores.mongodb import thoughts_db
-
-anthropic = Anthropic()
-openai.api_key = os.environ["OPENAI_API_KEY"]
 
 PYTHON_ENV = os.environ.get("PYTHON_ENV", "development")
 
-
-def generate_summary(content: str, title: str):
-    human_prompt = f"""
-        Write a 50-300 word summary of the following article, make sure to keep important names. 
-        Keep it professional and concise.
-
-        title: {title}
-        article content: {content}
-    """
-
-    retries = 5
-    for i in range(retries):
-        try:
-            prompt = f"{HUMAN_PROMPT}: You are a frequent contributor to Wikipedia. \n\n{human_prompt}\n\n{AI_PROMPT}:\n\nSummary:\n\n"
-            completion = anthropic.completions.create(
-                prompt=prompt,
-                model="claude-instant-v1-100k",
-                max_tokens_to_sample=100000,
-                temperature=0,
-            )
-            response = completion.completion.strip(" \n")
-            break
-        except AnthropicAPIStatusError:
-            print(
-                f"Anthropic API service unavailable. Retrying again... ({i+1}/{retries})"
-            )
-            time.sleep(3)
-    return response
+claude = ClaudeLLM()
 
 
-def generate_topics(content: str, title: str):
-    human_prompt = f"""
-        Pick three topics that properly match the article summary below, based on the topics list provided.
-        Your response format should be:
-        - TOPIC_1
-        - TOPIC_2
-        - TOPIC_3
+def get_rung_score(content: str, title: str):
 
-        Do not add a topic that isn't in this list of topics: {constants.topics}
-        Feel free to use less than three topics if you can't find three topics from the list that are a good fit.
-        If you pick a topic that is two words or more, make sure every word is capitalized (not just the first word).
+  source = f"Title: {title}\nContent: {content}"
+  rung, reason = decouple_rung(identify_rung(source, claude))
 
-        Here are some notes regarding topics which are identical but might be called different names: 
-        - If you choose "Mathematics" as a topic, please just call it "Math".
-        - If you choose "Health" as a topic, please call it "Medicine or Health."
-        - If you choose "Film", "Music", or "Art" as a topic, please just call it "Culture".
-
-        Article title: {title}
-        Article summary: {content}
-    """
-
-    retries = 5
-    for i in range(retries):
-        try:
-            completion = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                temperature=0,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a frequent contributor to Wikipedia, and have a deep understanding of Wikipedia's categories and topics.",
-                    },
-                    {"role": "user", "content": human_prompt},
-                ],
-            )
-            break
-        except openai.error.ServiceUnavailableError:
-            print(f"OpenAI service unavailable. Retrying again... ({i+1}/{retries})")
-            time.sleep(3)
-
-    response = completion.choices[0].message
-
-    parsed_topics = []
-    untracked_topics = []
-    for topic in response.content.split("\n"):
-        stripped_topic = topic.replace("-", "").strip()
-        if stripped_topic in constants.topics:
-            parsed_topics.append(stripped_topic)
-        else:
-            untracked_topics.append(stripped_topic)
-    return {"accepted_topics": parsed_topics, "untracked_topics": untracked_topics}
-
+  return {"level": rung, "reason": reason,}
 
 # TODO: LATER: something more robust down the road...possibly tapping into our existing rules db collection
 # Farzad said that "this will need to be greatly expanded, and in short order"
-def filter_bad_candidates_for_classification(
+def filter_bad_candidates_for_rungness(
     thought, parsed_content
 ) -> Tuple[bool, str]:
     """
@@ -171,7 +97,6 @@ def filter_bad_candidates_for_classification(
         return (False, reason)
     return (True, "")
 
-
 # TODO: We'll likely have to store transcript in S3 as opposed to directly in DB sooner than later.
 def store_transcript(thought_pointer, transcript):
     thought_collection = thought_pointer["collection"]
@@ -182,7 +107,6 @@ def store_transcript(thought_pointer, transcript):
     )
 
     return update_op.modified_count
-
 
 def parse_youtube_transcript(youtube_url: str):
     transcript = ""
@@ -229,18 +153,15 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
         pipeline = [
             {
                 "$match": {
-                    "flags.avoid_topic_classification": {"$ne": True},
-                    "llm_generated_legacy_topics": {"$exists": False},
+                    "flags.avoid_rung_classification": {"$ne": True},
+                    "llm_generated_rung_score": {"$exists": False}, # this can be modified
                     "reviewed": True,
                     "valuable": True,
                     "voicesInContent": {"$ne": None},
                     "title": {"$ne": None},
                     "url": {"$ne": None},
                     "$or": [
-                        # For articles that can be classified, we need content_text or content.
-                        # Youtube videos won't have content_text or content, but rather vid
-                        # (but "vid" is a proxy value for making sure that a youtube video is a youtube video);
-                        # "vid" is not actually used.
+                       
                         {"content_text": {"$ne": None}},
                         {"content": {"$ne": None}},
                         {"vid": {"$ne": None}},
@@ -318,7 +239,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
             (
                 thought_should_be_processed,
                 skipped_reason,
-            ) = filter_bad_candidates_for_classification(thought, parsed_content)
+            ) = filter_bad_candidates_for_rungness(thought, parsed_content)
             if thought_should_be_processed:
                 thoughts_to_classify.append(
                     {
@@ -348,7 +269,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
 def main(single_collection_find_limit=10000):
     # Setup/init
     job_id = utils.create_job()
-    all_untracked_topics = {}
+    all_untracked_levels = {}
     thoughts_classified: List[ObjectId] = []
     ai_processing_errors = []
 
@@ -360,34 +281,23 @@ def main(single_collection_find_limit=10000):
         data_collection_errors,
     ) = collect_thoughts_for_classification(single_collection_find_limit)
 
-    # Summarize + classify each thought
+    # Rungness Score
     for thought in thoughts_to_classify:
         try:
-            generated_summary = generate_summary(thought["content"], thought["title"])
-            generated_topics = generate_topics(generated_summary, thought["title"])
+            rung_information = get_rung_score(thought["content"], thought["title"])
 
-            # Here we compile all untracked topics for later analysis. We don't need to include
-            # reference to the original thought, because the thought itself will contain its own list of
-            # accepted and untracked topics.
-            for topic in generated_topics["untracked_topics"]:
-                if all_untracked_topics.get(topic) is not None:
-                    all_untracked_topics[topic] += 1
+            rung_class = rung_information['rung']
+            if rung_class not in constants.rung_classes:
+                if all_untracked_levels.get(rung_class) is not None:
+                    all_untracked_levels[rung_class] += 1
                 else:
-                    all_untracked_topics[topic] = 1
+                    all_untracked_levels[rung_class] = 1
 
-            # Only overwrite the thought's "topics" field when in production
-            if PYTHON_ENV == "production":
-                fields_to_set = {
-                    "llm_generated_summary": generated_summary,
-                    "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and untracked topics.
-                    "topics": generated_topics["accepted_topics"],
-                }
-            else:
-                fields_to_set = {
-                    "llm_generated_summary": generated_summary,
-                    "llm_generated_legacy_topics": generated_topics,
-                }
-
+            
+            fields_to_set = {
+                "reason": rung_information['reason'],  # This includes both accepted and untracked topics.
+                "level": rung_class,}
+      
             update_op = thoughts_db[thought["collection"]].update_one(
                 {"_id": thought["_id"]},
                 {
@@ -396,15 +306,11 @@ def main(single_collection_find_limit=10000):
                         "llm_processing_metadata.workflows_completed": {
                             "$each": [
                                 {
-                                    **constants.workflows["summarization"],
+                                    **constants.workflows["rungness"],
                                     "last_performed": utils.get_now(),
                                     "job_id": job_id,
                                 },
-                                {
-                                    **constants.workflows["topic_classification"],
-                                    "last_performed": utils.get_now(),
-                                    "job_id": job_id,
-                                },
+                                
                             ]
                         },
                         "llm_processing_metadata.all_fields_modified": {
@@ -425,7 +331,7 @@ def main(single_collection_find_limit=10000):
     for thought in thoughts_to_skip:
         update_op = thoughts_db[thought["collection"]].update_one(
             {"_id": thought["_id"]},
-            {"$set": {"flags.avoid_topic_classification": True}},
+            {"$set": {"flags.avoid_rung_classification": True}},
         )
 
     # Finish up, log the job
@@ -435,15 +341,14 @@ def main(single_collection_find_limit=10000):
             "status": "complete",
             "last_updated": utils.get_now(),
             "workflows_completed": [
-                constants.workflows["summarization"],
-                constants.workflows["topic_classification"],
+                constants.workflows["rungngess"]
             ],
             "job_metadata": {
                 "collections_queried": active_thought_collections,
                 "thoughts_classified_count": len(thoughts_classified),
                 "thoughts_skipped": thoughts_to_skip,
                 "thoughts_skipped_count": len(thoughts_to_skip),
-                "untracked_topics": all_untracked_topics,
+                "untracked_levels": all_untracked_levels,
                 "errors": {
                     "data_collection_errors": data_collection_errors,
                     "ai_processing_errors": ai_processing_errors,

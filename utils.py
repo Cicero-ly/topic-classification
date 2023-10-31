@@ -1,10 +1,10 @@
 from data_stores.mongodb import jobs_db
 import datetime
 import bson.objectid
+
 from typing import Dict
 
 ml_jobs = jobs_db["ml_jobs"]
-
 
 def get_now() -> float:
     return datetime.datetime.now(tz=datetime.timezone.utc).timestamp()

@@ -36,11 +36,15 @@ PYTHON_ENV = os.environ.get("PYTHON_ENV", "development")
 
 def generate_summary(content: str, title: str):
     human_prompt = f"""
-        Write a 50-300 word summary of the following article, make sure to keep important names. 
-        Keep it professional and concise.
+        
+            Instruction: Create a introduction to the source then Distill the source into its main arguments or points, and present them in a succinct summary.
 
-        title: {title}
-        article content: {content}
+            title: {title}
+            source content: {content}
+
+            Write the summary directly without including your thoughts.
+
+            Assistant:
     """
 
     retries = 5
@@ -54,6 +58,8 @@ def generate_summary(content: str, title: str):
                 temperature=0,
             )
             response = completion.completion.strip(" \n")
+            if ":" in response:
+              response = response[response.index(':')+1:]
             break
         except AnthropicAPIStatusError:
             print(
@@ -62,7 +68,40 @@ def generate_summary(content: str, title: str):
             time.sleep(3)
     return response
 
+def generate_short_summary(content: str, title: str):
+    human_prompt = f"""
 
+            Instruction: Create a one-sentence summary that can be used as a headline for the source.
+
+            title: {title}
+            source content: {content}
+
+            Please follow the instruction details without including any of your thoughts.
+
+            Assistant:
+    """
+
+    retries = 5
+    for i in range(retries):
+        try:
+            prompt = f"{HUMAN_PROMPT}: You are a frequent contributor to Wikipedia. \n\n{human_prompt}\n\n{AI_PROMPT}:\n\nSummary:\n\n"
+            completion = anthropic.completions.create(
+                prompt=prompt,
+                model="claude-instant-v1-100k",
+                max_tokens_to_sample=100000,
+                temperature=0,
+            )
+            response = completion.completion.strip(" \n")
+            if ":" in response:
+              response = response[response.index(':')+1:]
+            break
+        except AnthropicAPIStatusError:
+            print(
+                f"Anthropic API service unavailable. Retrying again... ({i+1}/{retries})"
+            )
+            time.sleep(3)
+    return response
+    
 def generate_topics(content: str, title: str):
     human_prompt = f"""
         Pick three topics that properly match the article summary below, based on the topics list provided.

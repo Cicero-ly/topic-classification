@@ -286,7 +286,7 @@ def main(single_collection_find_limit=10000):
         try:
             rung_information = get_rung_score(thought["content"], thought["title"])
 
-            rung_class = rung_information['rung']
+            rung_class = rung_information['level']
             if rung_class not in constants.rung_classes:
                 if all_untracked_levels.get(rung_class) is not None:
                     all_untracked_levels[rung_class] += 1
@@ -324,7 +324,9 @@ def main(single_collection_find_limit=10000):
                 thoughts_classified.append(
                     {"collection": thought["collection"], "_id": thought["_id"]}
                 )
+
         except Exception as e:
+            print(str(e))
             ai_processing_errors.append(str(e))
             print(e)
 
@@ -341,7 +343,7 @@ def main(single_collection_find_limit=10000):
             "status": "complete",
             "last_updated": utils.get_now(),
             "workflows_completed": [
-                constants.workflows["rungngess"]
+                constants.workflows["rungness"]
             ],
             "job_metadata": {
                 "collections_queried": active_thought_collections,

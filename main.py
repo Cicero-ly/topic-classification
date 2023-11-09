@@ -8,12 +8,12 @@ from anthropic import AI_PROMPT, HUMAN_PROMPT, Anthropic
 from anthropic import APIStatusError as AnthropicAPIStatusError
 
 
-
 # We're sticking with the HTML parser included in Python's standard library. See https://www.crummy.com/software/BeautifulSoup/bs4/doc/#installing-a-parser
 # If we ever have issues with performance, we should consider lxml, although managing this as a dependency
 # can be a bit more of a headache than most of our other strictly-python deps.
 # (lxml is written in C, and the python package lxml is simply a
 # "pythonic binding" of the underlying libxml2 and libxslt.)
+
 from bs4 import BeautifulSoup
 from bson.objectid import ObjectId
 from langchain.document_loaders import YoutubeLoader
@@ -25,6 +25,7 @@ from youtube_transcript_api._errors import (
 )
 
 # TODO: LATER: fetch topics from db so this is always up-to-date
+
 import constants
 import utils
 from ml_utils import ClaudeLLM, decouple_rung, identify_rung
@@ -33,7 +34,6 @@ from data_stores.mongodb import thoughts_db
 PYTHON_ENV = os.environ.get("PYTHON_ENV", "development")
 
 claude = ClaudeLLM()
-
 
 def get_rung_score(content: str, title: str):
 
@@ -57,6 +57,7 @@ def filter_bad_candidates_for_rungness(
     if len(parsed_content) < 450:
         reason = "Ignore content if character count < 450"
         return (False, reason)
+    
     if "read more" in parsed_content[-250:]:
         reason = "Ignore truncated content"
         return (False, reason)
@@ -81,6 +82,7 @@ def filter_bad_candidates_for_rungness(
         ObjectId("60cfdfecdbc5ba3af65ce81e") in thought["voicesInContent"]
         or ObjectId("6144af944d89a998bdef2aef") in thought["voicesInContent"]
     ):
+        
         reason = "Ignore Jerry Coyne"
         return (False, reason)
     if ObjectId("6302c1f6bce5b9d5af604a27") in thought["voicesInContent"]:
@@ -140,7 +142,6 @@ def parse_youtube_transcript(youtube_url: str):
         errors.append(str(e))
     finally:
         return (transcript, errors)
-
 
 def collect_thoughts_for_classification(single_collection_find_limit=1000):
     active_thought_collections = os.environ["ACTIVE_THOUGHT_COLLECTIONS"].split(",")
@@ -292,7 +293,6 @@ def main(single_collection_find_limit=10000):
                     all_untracked_levels[rung_class] += 1
                 else:
                     all_untracked_levels[rung_class] = 1
-
             
             fields_to_set = {
                 "reason": rung_information['reason'],  # This includes both accepted and untracked topics.
@@ -343,7 +343,7 @@ def main(single_collection_find_limit=10000):
             "status": "complete",
             "last_updated": utils.get_now(),
             "workflows_completed": [
-                constants.workflows["rungness"]
+                constants.workflows["rung_classification"]
             ],
             "job_metadata": {
                 "collections_queried": active_thought_collections,

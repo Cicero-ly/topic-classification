@@ -6,7 +6,7 @@ workflows = {
         "model": "claude-instant-v1-100k",
         "fields_written": "llm_generated_summary",
     },
-    "rungness": {
+    "rung_classification": {
         "name": "rung_classification",
         "model": "claude-instant-v1-100k",
         "fields_written": ["level", "reason"],

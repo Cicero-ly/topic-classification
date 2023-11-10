@@ -19,7 +19,7 @@ workflows = {
 }
 
 rung_classes = [
-    "High",
-    "In Between",
-    "Low"
+    "high",
+    "medium",
+    "low"
 ]

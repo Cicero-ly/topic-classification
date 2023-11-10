@@ -294,9 +294,9 @@ def main(single_collection_find_limit=10000):
                 else:
                     all_untracked_levels[rung_class] = 1
             
-            fields_to_set = {
+            fields_to_set = { 'llm_rung': {
                 "reason": rung_information['reason'],  # This includes both accepted and untracked topics.
-                "level": rung_class,}
+                "level": rung_class,}}
       
             update_op = thoughts_db[thought["collection"]].update_one(
                 {"_id": thought["_id"]},
@@ -306,7 +306,7 @@ def main(single_collection_find_limit=10000):
                         "llm_processing_metadata.workflows_completed": {
                             "$each": [
                                 {
-                                    **constants.workflows["rungness"],
+                                    **constants.workflows["rung_classification"],
                                     "last_performed": utils.get_now(),
                                     "job_id": job_id,
                                 },

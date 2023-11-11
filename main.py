@@ -47,6 +47,7 @@ def get_rung_score(content: str, title: str):
 def filter_bad_candidates_for_rungness(
     thought, parsed_content
 ) -> Tuple[bool, str]:
+    
     """
     Determine if thought should undergo topic classification according to simple filter rules.
     If a thought does not pass the filter, it will also be flagged in the DB to ensure

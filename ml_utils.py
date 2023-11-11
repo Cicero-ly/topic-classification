@@ -45,7 +45,9 @@ def decouple_rung(x):
   # This is to extract the reason and Rung class from the LLM Response;
   # Still under testing to tackle all types of text output strcuture.
     try:
-
+      # Handling the formats of:
+      # Class:
+      # Reason:
       if '<class>' in x:
 
         class_point = x[x.index('<class>')+1:]
@@ -56,9 +58,14 @@ def decouple_rung(x):
       else:
 
         class_point = x[x.lower().index('class'):]
+
         rung_class = class_point[class_point.replace('-', ':').index(':') + 1: class_point.index('\n')].strip().lower()
+
         reason_point = x[x.lower().index('score'):]
+
         rung_reason = reason_point[reason_point.replace('-', ':').index(':') + 1:]
+        if 'scratchpad' in rung_reason:
+          rung_reason = rung_reason[:rung_reason.index('\n')]
 
       if 'high' in rung_class:
         rung_class = "high"
@@ -66,14 +73,12 @@ def decouple_rung(x):
         rung_class = "medium"
       else:
         rung_class = "low"
-
-      els = [rung_class, rung_reason]
+      els = [rung_class, rung_reason.strip()]
 
     except Exception as e:
 
       els = [x, e]
     return els
-
 
 def identify_rung(source, model):
 

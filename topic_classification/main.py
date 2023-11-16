@@ -25,7 +25,10 @@ from youtube_transcript_api._errors import (
 )
 
 # TODO: LATER: fetch topics from db so this is always up-to-date
+import sys
+sys.path.insert(1, os.path.join(sys.path[0], '..'))
 import constants
+
 import shared_utils
 
 from utils import generate_short_summary, generate_summary, generate_topics

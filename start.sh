@@ -2,14 +2,13 @@
 set -e
 echo "===================  Topic classification starting... ======================="
 echo ""
-cd /usr/src/app/topic_classifcation
-python3 main.py
+cd /usr/src/app
+python3 topic_classification/main.py
 echo ""
 echo "===================  Topic classification complete. ========================="
 set -e
 echo "===================  Rung classification starting... ======================="
 echo ""
-cd /usr/src/app/rung_classification
-python3 main.py
+python3 rung_classification/main.py
 echo ""
 echo "===================  Rung classification complete. ========================="

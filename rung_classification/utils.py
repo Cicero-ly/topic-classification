@@ -1,50 +1,17 @@
-from langchain.llms.base import LLM
 from langchain.chains import LLMChain
 from langchain import PromptTemplate
 
-from typing import Optional, List, Mapping, Any, Dict
-from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
-import os
-
-class ClaudeLLM(LLM):
-
-    @property
-    def _llm_type(self) -> str:
-
-        return "custom"
-
-    def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
-
-
-        client = Anthropic(
-            api_key = os.environ.get("ANTHROPIC_API_KEY"),
-        )
-
-        prompt_formatted = (
-        f"{HUMAN_PROMPT}{prompt}\n{AI_PROMPT}"
-        )
-
-        response = client.completions.create(
-        model="claude-instant-v1-100k",
-        prompt=prompt_formatted,
-        stop_sequences=[HUMAN_PROMPT],
-        max_tokens_to_sample=100000,
-        temperature=0,
-         )
-
-        return response.completion
-
-    @property
-    def _identifying_params(self) -> Mapping[str, Any]:
-        """Get the identifying parameters."""
-        return {
-
-        }
     
 def decouple_rung(x):
+    
   # This is to extract the reason and Rung class from the LLM Response;
   # Still under testing to tackle all types of text output strcuture.
+
     try:
+      
+      # Handling the formats of:
+      # Class:
+      # Reason:
 
       if '<class>' in x:
 
@@ -56,9 +23,14 @@ def decouple_rung(x):
       else:
 
         class_point = x[x.lower().index('class'):]
+
         rung_class = class_point[class_point.replace('-', ':').index(':') + 1: class_point.index('\n')].strip().lower()
+
         reason_point = x[x.lower().index('score'):]
+
         rung_reason = reason_point[reason_point.replace('-', ':').index(':') + 1:]
+        if 'scratchpad' in rung_reason:
+          rung_reason = rung_reason[:rung_reason.index('\n')]
 
       if 'high' in rung_class:
         rung_class = "high"
@@ -66,14 +38,12 @@ def decouple_rung(x):
         rung_class = "medium"
       else:
         rung_class = "low"
-
-      els = [rung_class, rung_reason]
+      els = [rung_class, rung_reason.strip()]
 
     except Exception as e:
 
       els = [x, e]
     return els
-
 
 def identify_rung(source, model):
 

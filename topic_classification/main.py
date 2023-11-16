@@ -1,11 +1,10 @@
 import os
 import time
+
 from pprint import pprint
 from typing import List, Tuple
 
 import pymongo
-from anthropic import AI_PROMPT, HUMAN_PROMPT, Anthropic
-from anthropic import APIStatusError as AnthropicAPIStatusError
 
 
 # We're sticking with the HTML parser included in Python's standard library. See https://www.crummy.com/software/BeautifulSoup/bs4/doc/#installing-a-parser
@@ -16,6 +15,7 @@ from anthropic import APIStatusError as AnthropicAPIStatusError
 
 from bs4 import BeautifulSoup
 from bson.objectid import ObjectId
+
 from langchain.document_loaders import YoutubeLoader
 from youtube_transcript_api._errors import (
     NoTranscriptAvailable,
@@ -25,26 +25,18 @@ from youtube_transcript_api._errors import (
 )
 
 # TODO: LATER: fetch topics from db so this is always up-to-date
-
 import constants
-import utils
-from ml_utils import ClaudeLLM, decouple_rung, identify_rung
+import shared_utils
+
+from utils import generate_short_summary, generate_summary, generate_topics
 from data_stores.mongodb import thoughts_db
 
 PYTHON_ENV = os.environ.get("PYTHON_ENV", "development")
 
-claude = ClaudeLLM()
-
-def get_rung_score(content: str, title: str):
-
-  source = f"Title: {title}\nContent: {content}"
-  rung, reason = decouple_rung(identify_rung(source, claude))
-
-  return {"level": rung, "reason": reason,}
 
 # TODO: LATER: something more robust down the road...possibly tapping into our existing rules db collection
 # Farzad said that "this will need to be greatly expanded, and in short order"
-def filter_bad_candidates_for_rungness(
+def filter_bad_candidates_for_classification(
     thought, parsed_content
 ) -> Tuple[bool, str]:
     """
@@ -57,7 +49,6 @@ def filter_bad_candidates_for_rungness(
     if len(parsed_content) < 450:
         reason = "Ignore content if character count < 450"
         return (False, reason)
-    
     if "read more" in parsed_content[-250:]:
         reason = "Ignore truncated content"
         return (False, reason)
@@ -82,7 +73,6 @@ def filter_bad_candidates_for_rungness(
         ObjectId("60cfdfecdbc5ba3af65ce81e") in thought["voicesInContent"]
         or ObjectId("6144af944d89a998bdef2aef") in thought["voicesInContent"]
     ):
-        
         reason = "Ignore Jerry Coyne"
         return (False, reason)
     if ObjectId("6302c1f6bce5b9d5af604a27") in thought["voicesInContent"]:
@@ -109,6 +99,7 @@ def store_transcript(thought_pointer, transcript):
     )
 
     return update_op.modified_count
+
 
 def parse_youtube_transcript(youtube_url: str):
     transcript = ""
@@ -143,6 +134,7 @@ def parse_youtube_transcript(youtube_url: str):
     finally:
         return (transcript, errors)
 
+
 def collect_thoughts_for_classification(single_collection_find_limit=1000):
     active_thought_collections = os.environ["ACTIVE_THOUGHT_COLLECTIONS"].split(",")
     print("Active thought collections: ", active_thought_collections)
@@ -154,15 +146,18 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
         pipeline = [
             {
                 "$match": {
-                    "flags.avoid_rung_classification": {"$ne": True},
-                    "llm_generated_rung_score": {"$exists": False}, # this can be modified
+                    "flags.avoid_topic_classification": {"$ne": True},
+                    "llm_generated_legacy_topics": {"$exists": False},
                     "reviewed": True,
                     "valuable": True,
                     "voicesInContent": {"$ne": None},
                     "title": {"$ne": None},
                     "url": {"$ne": None},
                     "$or": [
-                       
+                        # For articles that can be classified, we need content_text or content.
+                        # Youtube videos won't have content_text or content, but rather vid
+                        # (but "vid" is a proxy value for making sure that a youtube video is a youtube video);
+                        # "vid" is not actually used.
                         {"content_text": {"$ne": None}},
                         {"content": {"$ne": None}},
                         {"vid": {"$ne": None}},
@@ -240,7 +235,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
             (
                 thought_should_be_processed,
                 skipped_reason,
-            ) = filter_bad_candidates_for_rungness(thought, parsed_content)
+            ) = filter_bad_candidates_for_classification(thought, parsed_content)
             if thought_should_be_processed:
                 thoughts_to_classify.append(
                     {
@@ -269,8 +264,8 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
 
 def main(single_collection_find_limit=10000):
     # Setup/init
-    job_id = utils.create_job()
-    all_untracked_levels = {}
+    job_id = shared_utils.create_job()
+    all_untracked_topics = {}
     thoughts_classified: List[ObjectId] = []
     ai_processing_errors = []
 
@@ -282,22 +277,36 @@ def main(single_collection_find_limit=10000):
         data_collection_errors,
     ) = collect_thoughts_for_classification(single_collection_find_limit)
 
-    # Rungness Score
+    # Summarize + classify each thought
     for thought in thoughts_to_classify:
         try:
-            rung_information = get_rung_score(thought["content"], thought["title"])
+            generated_summary = generate_summary(thought["content"], thought["title"])
+            # TO-DO: Add generated short summary
 
-            rung_class = rung_information['level']
-            if rung_class not in constants.rung_classes:
-                if all_untracked_levels.get(rung_class) is not None:
-                    all_untracked_levels[rung_class] += 1
+            generated_topics = generate_topics(generated_summary, thought["title"])
+
+            # Here we compile all untracked topics for later analysis. We don't need to include
+            # reference to the original thought, because the thought itself will contain its own list of
+            # accepted and untracked topics.
+            for topic in generated_topics["untracked_topics"]:
+                if all_untracked_topics.get(topic) is not None:
+                    all_untracked_topics[topic] += 1
                 else:
-                    all_untracked_levels[rung_class] = 1
-            
-            fields_to_set = { 'llm_rung': {
-                "reason": rung_information['reason'],  # This includes both accepted and untracked topics.
-                "level": rung_class,}}
-      
+                    all_untracked_topics[topic] = 1
+
+            # Only overwrite the thought's "topics" field when in production
+            if PYTHON_ENV == "production":
+                fields_to_set = {
+                    "llm_generated_summary": generated_summary,
+                    "llm_generated_legacy_topics": generated_topics,  # This includes both accepted and untracked topics.
+                    "topics": generated_topics["accepted_topics"],
+                }
+            else:
+                fields_to_set = {
+                    "llm_generated_summary": generated_summary,
+                    "llm_generated_legacy_topics": generated_topics,
+                }
+
             update_op = thoughts_db[thought["collection"]].update_one(
                 {"_id": thought["_id"]},
                 {
@@ -306,11 +315,15 @@ def main(single_collection_find_limit=10000):
                         "llm_processing_metadata.workflows_completed": {
                             "$each": [
                                 {
-                                    **constants.workflows["rung_classification"],
-                                    "last_performed": utils.get_now(),
+                                    **constants.workflows["summarization"],
+                                    "last_performed": shared_utils.get_now(),
                                     "job_id": job_id,
                                 },
-                                
+                                {
+                                    **constants.workflows["topic_classification"],
+                                    "last_performed": shared_utils.get_now(),
+                                    "job_id": job_id,
+                                },
                             ]
                         },
                         "llm_processing_metadata.all_fields_modified": {
@@ -324,33 +337,32 @@ def main(single_collection_find_limit=10000):
                 thoughts_classified.append(
                     {"collection": thought["collection"], "_id": thought["_id"]}
                 )
-
         except Exception as e:
-            print(str(e))
             ai_processing_errors.append(str(e))
             print(e)
 
     for thought in thoughts_to_skip:
         update_op = thoughts_db[thought["collection"]].update_one(
             {"_id": thought["_id"]},
-            {"$set": {"flags.avoid_rung_classification": True}},
+            {"$set": {"flags.avoid_topic_classification": True}},
         )
 
     # Finish up, log the job
-    utils.update_job(
+    shared_utils.update_job(
         job_id,
         {
             "status": "complete",
-            "last_updated": utils.get_now(),
+            "last_updated": shared_utils.get_now(),
             "workflows_completed": [
-                constants.workflows["rung_classification"]
+                constants.workflows["summarization"],
+                constants.workflows["topic_classification"],
             ],
             "job_metadata": {
                 "collections_queried": active_thought_collections,
                 "thoughts_classified_count": len(thoughts_classified),
                 "thoughts_skipped": thoughts_to_skip,
                 "thoughts_skipped_count": len(thoughts_to_skip),
-                "untracked_levels": all_untracked_levels,
+                "untracked_topics": all_untracked_topics,
                 "errors": {
                     "data_collection_errors": data_collection_errors,
                     "ai_processing_errors": ai_processing_errors,

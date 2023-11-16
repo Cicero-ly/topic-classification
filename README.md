@@ -1,6 +1,6 @@
-# Cicero Topic Classification
+# Cicero Mono Repo for Topic Classification + Rung Classification
 
-## Overview
+## Overview for Topic Classification
 
 Topic Classification is one of several ML pipelines we perform at Cicero. It's meant to populate a thought's "legacy topics" (to be distinguished from "Wikipedia" topics). Legacy topics are the topics shown to users during onboarding.
 
@@ -8,10 +8,17 @@ Topic classification is performed in two steps:
 1. **Summarization** (using Anthropic's Claude, due to its 100k token context window)
 2. **Generating topics** based on step 1's generated summary, using ChatGPT 3.5 Turbo
 
+## Overview for Rung Classification
+
+Rung Classification is used to curate sources based on Rungness; If the source follows certain guidelines to be considered of high quality. 
+
+Rung Classification is performed in one step:
+1. **Classification** (using Anthropic's Claude, due to its 100k token context window) by implementing scratchpadding to boost the model's performance to remember certain points about the source which makes it more accurate in dealing with sources of long content.
+
 ## Running locally (Docker)
 ### Build the image and run the container
-1. `docker build -t cicero_topic_classification .`
-2. `docker run --env-file .env cicero_topic_classification` (Get the .env from a teammate)
+1. `docker build -t cicero_ml_mono_repo .`
+2. `docker run --env-file .env cicero_ml_mono_repo` (Get the .env from a teammate)
 
 ## Environment variables
 
@@ -32,6 +39,8 @@ Topic classification is performed in two steps:
 This is a batch job, and runs at some periodic interval on a separate loop from the primary content ingestion ([Cicero-ly/integrations](https://github.com/cicero-ly/integrations)).
 
 It queries for "valuable" and "reviewed" thoughts (that haven't been looked at for topic classification yet), summarizes them, then assigns topics to the thought itself. We also save ancillary artifacts that we get from this process, including `untracked_topics` (topics which don't fit our current criteria, but we might need or want to analyze later) and `content_transcript` for youtube videos. 
+
+The same process is for rung classification where we store the level, and reason of the classification.
 
 ### Filtering
 There is also an additional rudimentary filter we use to filter out thoughts _after_ they've been fetched from DB, but should not be processed for the purposes of this pipeline (see `thought_should_be_processed()`).

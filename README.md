@@ -8,17 +8,12 @@ Topic classification is performed in two steps:
 1. **Summarization** (using Anthropic's Claude, due to its 100k token context window)
 2. **Generating topics** based on step 1's generated summary, using ChatGPT 3.5 Turbo
 
-## Running locally (Docker)
-### Build the image and run the container
-1. `docker build -t cicero_topic_classification .`
-2. `docker run --env-file .env cicero_topic_classification` (Get the .env from a teammate)
-
 ## Environment variables
 
 - `PYTHON_ENV` {string}: "production", "development", "data_analysis". See main.py's `main()` to see the difference (it's essentially a lever for the size of the input dataset, and can obviously act as a lever for anything else down the road.)
 - `SINGLE_COLLECTION_FIND_LIMIT` {int}: a `limit` set on the MongoDB `.find()` query for each thought collection, _in production only_. When `PYTHON_ENV` is set to `development`, `data_analysis`, or anything else, we do not use this value, instead overriding it in the code. 
   - (Note, that if/when we consolidate all thoughts into one collection, which is ideal, this var will change meaning—it will become a _total_ limit for thoughts to query. Right now, the value of this env var is multiplied by the number of collections in  `ACTIVE_THOUGHT_COLLECTIONS` to get the total # of input thoughts.)
-- `ACTIVE_THOUGHT_COLLECTIONS` {string}: a comma-separated list of collections from the `cicero_thoughts` DB to query. Note that there are *no spaces between the commas*:
+- `ACTIVE_THOUGHT_COLLECTIONS` {string}: a comma-separated list of collections from the `cicero_thoughts` DB to query. **When running + testing locally, it is ideal that these are set to test collections which emulate the production thought collections. You can create these if needed by exporting a subset of data from the production collections and importing it to a corresponding test collection.** Note that there are *no spaces between the commas*:
     ```
     ACTIVE_THOUGHT_COLLECTIONS=custom_articles,yt,news,people
     ```
@@ -26,6 +21,12 @@ Topic classification is performed in two steps:
 - `OPENAI_API_KEY` {string}: API key for OpenAI.
 - `MONGO_CONNECTION_STRING` {string}: Connection string for the MongoDB cluster.
 - `CI` {boolean}: Is this running in an automated environment?
+
+
+## Running locally (Docker)
+### Build the image and run the container
+1. `docker build -t cicero_topic_classification .`
+2. `docker run --env-file .env cicero_topic_classification` (Get the .env from a teammate)
 
 ## How this is used
 

@@ -5,7 +5,7 @@ from langchain import PromptTemplate
 def decouple_rung(x):
     
   # This is to extract the reason and Rung class from the LLM Response;
-  # Still under testing to tackle all types of text output strcuture.
+  # Still under testing to tackle all types of text output structure.
 
     try:
       

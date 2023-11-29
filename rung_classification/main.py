@@ -103,6 +103,7 @@ def filter_bad_candidates_for_rungness(
         return (False, reason)
     return (True, "")
 
+
 # TODO: We'll likely have to store transcript in S3 as opposed to directly in DB sooner than later.
 def store_transcript(thought_pointer, transcript):
     thought_collection = thought_pointer["collection"]
@@ -325,9 +326,7 @@ def main(single_collection_find_limit=10000):
             )
 
             if update_op.modified_count == 1:
-                thoughts_classified.append(
-                    {"collection": thought["collection"], "_id": thought["_id"]}
-                )
+                thoughts_classified.append(thought["_id"])
 
         except Exception as e:
             print(str(e))

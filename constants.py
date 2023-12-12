@@ -9,7 +9,7 @@ workflows = {
     "rung_classification": {
         "name": "rung_classification",
         "model": "claude-instant-v1-100k",
-        "fields_written": ["level", "reason"],
+        "fields_written": ["llm_rung"],
     },
     "topic_classification": {
         "name": "topic_classification",

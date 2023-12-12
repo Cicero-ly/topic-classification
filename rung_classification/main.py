@@ -291,16 +291,16 @@ def main(single_collection_find_limit=10000):
         try:
             rung_information = get_rung_score(thought["content"], thought["title"])
 
-            rung_class = rung_information['level']
-            if rung_class not in constants.rung_classes:
-                if all_untracked_levels.get(rung_class) is not None:
-                    all_untracked_levels[rung_class] += 1
+            rung_level = rung_information['level']
+            if rung_level not in constants.rung_levels:
+                if all_untracked_levels.get(rung_level) is not None:
+                    all_untracked_levels[rung_level] += 1
                 else:
-                    all_untracked_levels[rung_class] = 1
+                    all_untracked_levels[rung_level] = 1
             
             fields_to_set = { 'llm_rung': {
                 "reason": rung_information['reason'],  # This includes both accepted and untracked topics.
-                "level": rung_class
+                "level": rung_level
             }}
 
             update_op = thoughts_db[thought["collection"]].update_one(

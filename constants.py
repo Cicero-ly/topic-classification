@@ -18,7 +18,7 @@ workflows = {
     },
 }
 
-rung_classes = [
+rung_levels = [
     "high",
     "medium",
     "low"

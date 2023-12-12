@@ -160,7 +160,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
             {
                 "$match": {
                     "flags.avoid_rung_classification": {"$ne": True},
-                    "llm_generated_rung_score": {"$exists": False}, # this can be modified
+                    "llm_rung": {"$exists": False}, # this can be modified
                     "reviewed": True,
                     "valuable": True,
                     "voicesInContent": {"$ne": None},
@@ -274,7 +274,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
 
 def main(single_collection_find_limit=10000):
     # Setup/init
-    job_id = shared_utils.create_job()
+    job_id = shared_utils.create_job(constants.workflows["rung_classification"]["name"])
     all_untracked_levels = {}
     thoughts_classified: List[ObjectId] = []
     ai_processing_errors = []
@@ -301,8 +301,9 @@ def main(single_collection_find_limit=10000):
             
             fields_to_set = { 'llm_rung': {
                 "reason": rung_information['reason'],  # This includes both accepted and untracked topics.
-                "level": rung_class,}}
-      
+                "level": rung_class
+            }}
+
             update_op = thoughts_db[thought["collection"]].update_one(
                 {"_id": thought["_id"]},
                 {

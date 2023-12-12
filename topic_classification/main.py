@@ -267,7 +267,7 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
 
 def main(single_collection_find_limit=10000):
     # Setup/init
-    job_id = shared_utils.create_job()
+    job_id = shared_utils.create_job(constants.workflows["topic_classification"]["name"])
     all_untracked_topics = {}
     thoughts_classified: List[ObjectId] = []
     ai_processing_errors = []

@@ -15,10 +15,11 @@ ml_jobs = jobs_db["ml_jobs"]
 def get_now() -> float:
     return datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
 
-def create_job():
+def create_job(job_type):
+    assert job_type is not None
     now = get_now()
     insert_op = ml_jobs.insert_one(
-        {"type": "rung_classification", "last_updated": now, "status": "started"}
+        {"type": job_type, "last_updated": now, "status": "started"}
     )
     return insert_op.inserted_id
 

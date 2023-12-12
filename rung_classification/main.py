@@ -167,7 +167,6 @@ def collect_thoughts_for_classification(single_collection_find_limit=1000):
                     "title": {"$ne": None},
                     "url": {"$ne": None},
                     "$or": [
-                       
                         {"content_text": {"$ne": None}},
                         {"content": {"$ne": None}},
                         {"vid": {"$ne": None}},
